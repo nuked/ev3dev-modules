@@ -34,6 +34,8 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
+#include <linux/fs.h>
+#include <linux/miscdevice.h>
 #include <linux/hrtimer.h>
 #include <linux/irq.h>
 #include <asm/gpio.h>
@@ -388,7 +390,7 @@ void SetDutyMD (ULONG Duty);
 // MODULE_LICENSE("GPL");
 // MODULE_AUTHOR("The LEGO Group");
 // MODULE_DESCRIPTION(MODULE_NAME);
-// MODULE_SUPPORTED_DEVICE(DEVICE1_NAME);
+// MODULE_SUPPORTED_DEVICE(DEVICE_NAME);
 // 
 // module_init(ModuleInit);
 // module_exit(ModuleExit);
@@ -857,9 +859,9 @@ static ULONG AVG_COUNTS[NO_OF_OUTPUT_PORTS] = { (2 * COUNTS_PER_PULSE_LM), (2 * 
                                         }
 /*}}}*/
 /*{{{  OLDCODE*/
-//                                        REGUnlock;\
-//                                        iowrite32((ioread32(&SYSCFG0[CFGCHIP1]) | TBCLKSYNC),&SYSCFG0[CFGCHIP1]); /*This is the clock to all eHRPWM's*/\
-//                                        REGLock;\
+//                                        REGUnlock;
+//                                        iowrite32((ioread32(&SYSCFG0[CFGCHIP1]) | TBCLKSYNC),&SYSCFG0[CFGCHIP1]); /*This is the clock to all eHRPWM's*/
+//                                        REGLock;
 //                                      }
 /*}}}*/
 /*{{{  STOPPwm ()*/
@@ -913,14 +915,14 @@ static ULONG AVG_COUNTS[NO_OF_OUTPUT_PORTS] = { (2 * COUNTS_PER_PULSE_LM), (2 * 
                                       }
 /*}}}*/
 /*{{{  OLDCODE*/
-//                                           /* Setup PWM */\
-//                                           SetDutyMA(0);\
-//                                           SetDutyMB(0);\
-//                                           SetDutyMC(0);\
-//                                           SetDutyMD(0);\
-//                                           SETPwmFreqKHz(MAX_PWM_CNT-1);\
-//                                           FLOATFaultPins;\
-//                                           SETSleepPins;\
+//                                           /* Setup PWM */
+//                                           SetDutyMA(0);
+//                                           SetDutyMB(0);
+//                                           SetDutyMC(0);
+//                                           SetDutyMD(0);
+//                                           SETPwmFreqKHz(MAX_PWM_CNT-1);
+//                                           FLOATFaultPins;
+//                                           SETSleepPins;
 //                                      }
 /*}}}*/
 
@@ -2319,7 +2321,7 @@ void CheckforEndOfSync (void)
  *
  *
  */
-/*! \brief    Device1Write
+/*! \brief    pwm_command_handler
  *
  *  VALID COMMANDS:
  *
@@ -2347,7 +2349,6 @@ void CheckforEndOfSync (void)
  *
  *  Default state:        TBD
  */
-// static ssize_t Device1Write(struct file *File,const char *Buffer,size_t Count,loff_t *Data)
 static void pwm_command_handler (const signed char *Buf)
 {
 	switch ((UBYTE) (Buf[0])) {
@@ -3069,6 +3070,23 @@ static void pwm_command_handler (const signed char *Buf)
 }
 
 /*}}}*/
+/*{{{  static ssize_t Device1Write (struct file *f, const char *buffer, size_t count, loff_t *dptr)*/
+/*
+ *	called to write bytes to the motor device.
+ */
+static ssize_t Device1Write (struct file *f, const char *buffer, size_t count, loff_t *dptr)
+{
+	SBYTE kbuf[16];
+
+	if (count > 16) {
+		count = 16;
+	}
+	copy_from_user (kbuf, buffer, count);
+	pwm_command_handler (kbuf);
+
+	return count;
+}
+/*}}}*/
 
 /*{{{  OLDCODE*/
 // static ssize_t Device1Read(struct file *File,char *Buffer,size_t Count,loff_t *Offset)
@@ -3085,9 +3103,22 @@ static void pwm_command_handler (const signed char *Buf)
 // static    struct miscdevice Device1 =
 // {
 //   MISC_DYNAMIC_MINOR,
-//   DEVICE1_NAME,
+//   DEVICE_NAME,
 //   &Device1Entries
 // };
+/*}}}*/
+
+/*{{{  struct miscdevice Device1 & fileops*/
+static const struct file_operations Device1Entries = {
+	.owner = THIS_MODULE,
+	.write = Device1Write
+};
+
+static struct miscdevice Device1 = {
+	MISC_DYNAMIC_MINOR,
+	DEVICE_NAME,
+	&Device1Entries
+};
 /*}}}*/
 
 /*{{{  void GetPeriphealBasePtr (ULONG Address, ULONG Size, ULONG **Ptr)*/
@@ -3114,7 +3145,7 @@ void GetPeriphealBasePtr (ULONG Address, ULONG Size, ULONG **Ptr)
 
 		if (*Ptr != NULL) {
 // #ifdef DEBUG
-//    printk("%s memory Remapped from 0x%08lX to 0x%08lX\n",DEVICE1_NAME,Address,(unsigned long)*Ptr);
+//    printk("%s memory Remapped from 0x%08lX to 0x%08lX\n",DEVICE_NAME,Address,(unsigned long)*Ptr);
 			printk ("%s memory Remapped from 0x%08lX to 0x%08lX\n", "bar_pwm", Address, (unsigned long) *Ptr);
 // #endif
 		} else {
@@ -3152,15 +3183,14 @@ static int Device1Init (void)
 //  GetPeriphealBasePtr(0x01E1A000, 0x1F8, (ULONG**)&PLLC1);    /* PLLC1 pointer      */
 	GetPeriphealBasePtr (0x01E27000, 0xA80, (ULONG **) & PSC1);	/* PSC1 pointer       */
 
-//  Result  =  misc_register(&Device1);
-//  if (Result)
-//  {
-//    printk("  %s device register failed\n",DEVICE1_NAME);
-//  }
-//  else
-//  {
+	Result = misc_register (&Device1);
+	if (Result) {
+		printk ("  failed to register device %s\n", DEVICE_NAME);
+		goto out_err;
+	}
+
 #ifdef DEBUG
-	printk ("  %s device register succes\n", DEVICE1_NAME);
+	printk ("  %s device register succes\n", DEVICE_NAME);
 #endif
 
 	iowrite32 (0x00000003, &PSC1[0x291]);	/* Setup ePWM module power on  */
@@ -3214,6 +3244,7 @@ static int Device1Init (void)
 	SetGpioAnyEdgeIrq (IRQC_PINNO, IntC);
 	SetGpioAnyEdgeIrq (IRQD_PINNO, IntD);
 //  }
+out_err:
 	return (Result);
 }
 /*}}}*/
@@ -3224,9 +3255,10 @@ static int Device1Init (void)
 static void Device1Exit (void)
 {
 	hrtimer_cancel (&Device1Timer);
-//  misc_deregister(&Device1);
+	misc_deregister (&Device1);
+
 #ifdef DEBUG
-	printk ("  %s device unregistered\n", DEVICE1_NAME);
+	printk ("  %s device unregistered\n", DEVICE_NAME);
 #endif
 	iounmap (SYSCFG0);
 //  iounmap(SYSCFG1);
@@ -3238,7 +3270,7 @@ static void Device1Exit (void)
 //  iounmap(PLLC1);
 	iounmap (PSC1);
 #ifdef DEBUG
-	printk ("  %s memory unmapped\n", DEVICE1_NAME);
+	printk ("  %s memory unmapped\n", DEVICE_NAME);
 #endif
 }
 /*}}}*/
@@ -4088,7 +4120,7 @@ static void Device2Exit (void)
 //  {
 //    ClearPageReserved(virt_to_page(((unsigned long)pTmp) + i));
 //#ifdef DEBUG
-//    printk("  %s memory page %d unmapped\n",DEVICE1_NAME,i);
+//    printk("  %s memory page %d unmapped\n",DEVICE_NAME,i);
 //#endif
 //  }
 //  kfree(kmalloc_ptr);
