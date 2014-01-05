@@ -3078,6 +3078,7 @@ static ssize_t Device1Write (struct file *f, const char *buffer, size_t count, l
 {
 	SBYTE kbuf[16];
 
+	memset (kbuf, 0, 16);
 	if (count > 16) {
 		count = 16;
 	}
