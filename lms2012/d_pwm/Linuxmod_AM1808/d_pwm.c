@@ -3115,9 +3115,10 @@ static const struct file_operations Device1Entries = {
 };
 
 static struct miscdevice Device1 = {
-	MISC_DYNAMIC_MINOR,
-	DEVICE_NAME,
-	&Device1Entries
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = DEVICE_NAME,
+	.fops = &Device1Entries,
+	.mode = 0222
 };
 /*}}}*/
 
