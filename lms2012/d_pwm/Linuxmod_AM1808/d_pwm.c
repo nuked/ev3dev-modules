@@ -3123,21 +3123,21 @@ static struct miscdevice Device1 = {
 };
 /*}}}*/
 
-/*{{{  void GetPeriphealBasePtr (ULONG Address, ULONG Size, ULONG **Ptr)*/
+/*{{{  void GetPeripheralBasePtr (ULONG Address, ULONG Size, ULONG **Ptr)*/
 // /*! \page PwmModule
 //  *
 //  *  <hr size="1"/>
 //  *  <b>     write </b>
 //  *
 //  */
-// /*! \brief    GetPeriphealBasePtr
+// /*! \brief    GetPeripheralBasePtr
 //  *
-//  *  Helper function for getting the peripheal HW base address
+//  *  Helper function for getting the peripheral HW base address
 //  *
 //  */
 #warning "Use proper kernel methods for this - see the pullup update in d_ui.c"
 
-void GetPeriphealBasePtr (ULONG Address, ULONG Size, ULONG **Ptr)
+void GetPeripheralBasePtr (ULONG Address, ULONG Size, ULONG **Ptr)
 {
 	/* eCAP0 pointer */
 //if (request_mem_region(Address,Size,MODULE_NAME) >= 0)
@@ -3175,15 +3175,15 @@ static int Device1Init (void)
 
 #warning "Update this mess to use proper kernel methods instead of iomaps!"
 
-	GetPeriphealBasePtr (0x01C14000, 0x190, (ULONG **) & SYSCFG0);	/* SYSCFG0 pointer    */
-//  GetPeriphealBasePtr(0x01E2C000, 0x1C,  (ULONG**)&SYSCFG1);  /* SYSCFG1 pointer    */
-	GetPeriphealBasePtr (0x01F02000, 0x2854, (ULONG **) & eHRPWM1);	/* eHRPWM Pointer     */
-	GetPeriphealBasePtr (0x01F06000, 0x60, (ULONG **) & eCAP0);	/* eCAP0 pointer      */
-	GetPeriphealBasePtr (0x01F07000, 0x60, (ULONG **) & eCAP1);	/* eCAP1 pointer      */
-	GetPeriphealBasePtr (0x01F0D000, 0x80, (ULONG **) & TIMER64P3);	/* TIMER64P3 pointer  */
-//  GetPeriphealBasePtr(0x01E26000, 0xD4,  (ULONG**)&GPIO);     /* GPIO pointer       */
-//  GetPeriphealBasePtr(0x01E1A000, 0x1F8, (ULONG**)&PLLC1);    /* PLLC1 pointer      */
-	GetPeriphealBasePtr (0x01E27000, 0xA80, (ULONG **) & PSC1);	/* PSC1 pointer       */
+	GetPeripheralBasePtr (0x01C14000, 0x190, (ULONG **) & SYSCFG0);	/* SYSCFG0 pointer    */
+//  GetPeripheralBasePtr(0x01E2C000, 0x1C,  (ULONG**)&SYSCFG1);  /* SYSCFG1 pointer    */
+	GetPeripheralBasePtr (0x01F02000, 0x2854, (ULONG **) & eHRPWM1);	/* eHRPWM Pointer     */
+	GetPeripheralBasePtr (0x01F06000, 0x60, (ULONG **) & eCAP0);	/* eCAP0 pointer      */
+	GetPeripheralBasePtr (0x01F07000, 0x60, (ULONG **) & eCAP1);	/* eCAP1 pointer      */
+	GetPeripheralBasePtr (0x01F0D000, 0x80, (ULONG **) & TIMER64P3);	/* TIMER64P3 pointer  */
+//  GetPeripheralBasePtr(0x01E26000, 0xD4,  (ULONG**)&GPIO);     /* GPIO pointer       */
+//  GetPeripheralBasePtr(0x01E1A000, 0x1F8, (ULONG**)&PLLC1);    /* PLLC1 pointer      */
+	GetPeripheralBasePtr (0x01E27000, 0xA80, (ULONG **) & PSC1);	/* PSC1 pointer       */
 
 	Result = misc_register (&Device1);
 	if (Result) {
@@ -3228,7 +3228,7 @@ static int Device1Init (void)
 	SyncMNos[0] = UNUSED_SYNC_MOTOR;
 	SyncMNos[1] = UNUSED_SYNC_MOTOR;
 
-	/* Setup the PWM peripheals */
+	/* Setup the PWM peripherals */
 	printk ("TIMER64P3[TGCR]  = %lx\n", (((ULONG *) (TIMER64P3))[TGCR]));
 	printk ("TIMER64P3[PRD34] = %lx\n", (((ULONG *) (TIMER64P3))[PRD34]));
 	printk ("TIMER64P3[TCR]   = %lx\n", (((ULONG *) (TIMER64P3))[TCR]));
@@ -3358,7 +3358,7 @@ void InitGpio (void)
 		for (Pin = 0; Pin < OUTPUT_PORT_PINS; Pin++) {
 //      if ((pOutputPortPin[Hw][(Port * OUTPUT_PORT_PINS) + Pin].Pin) >= 0)
 			if (legoev3_pwm_gpio[Port][Pin] >= 0) {
-				gpio_request (legoev3_pwm_gpio[Port][Pin], "ev3_pwm");
+				gpio_request (legoev3_pwm_gpio[Port][Pin], "ev3dev_pwm");
 				gpio_direction_input (legoev3_pwm_gpio[Port][Pin]);
 // 
 //        pOutputPortPin[Hw][(Port * OUTPUT_PORT_PINS) + Pin].pGpio  =  (struct gpio_controller *__iomem)(GpioBase + ((pOutputPortPin[Hw][(Port * OUTPUT_PORT_PINS) + Pin].Pin >> 5) * 0x28) + 0x10);
@@ -4541,8 +4541,8 @@ static int ev3dev_pwm_init (void)
 	int i;
 
 	if (!ev3dev) {
-		printk ("ev3dev node is not yet registered, load the ev3dev_ev3dev module\n");
-
+		printk ("ev3dev node is not yet registered, load the ev3dev module\n");
+		ret = -ENODEV;
 		goto err0;
 	}
 
@@ -4550,7 +4550,7 @@ static int ev3dev_pwm_init (void)
 
 	pwm = platform_device_alloc ("pwm", -1);
 	if (!pwm) {
-		printk (KERN_CRIT "failed to allocate ev3dev\\pwm device\n");
+		printk (KERN_CRIT "failed to allocate ev3dev/pwm device\n");
 		goto err1;
 	}
 
@@ -4646,7 +4646,8 @@ static void ev3dev_pwm_exit (void)
 /*}}}*/
 
 module_init (ev3dev_pwm_init);
-module_exit (ev3dev_pwm_exit)
+module_exit (ev3dev_pwm_exit);
+
 
 MODULE_AUTHOR ("Ralph Hempel <rhempel@hempeldesigngroup.com>");
 MODULE_DESCRIPTION ("Driver for LEGO MINDSTORMS EV3 pwm Device");
