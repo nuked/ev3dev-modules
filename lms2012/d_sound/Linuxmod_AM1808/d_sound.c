@@ -279,16 +279,28 @@ static UBYTE BufferWriteIndex;
                                           EHRPWMClkEnableTone;\
                                         }
 /*}}}*/
+/*{{{  OLDCODE (SOUNDEnable)*/
+// #define   SOUNDEnable           {\
+//                                   (*SoundPin[SOUNDEN].pGpio).set_data    =  SoundPin[SOUNDEN].Mask;\
+//                                   (*SoundPin[SOUNDEN].pGpio).dir        &= ~SoundPin[SOUNDEN].Mask;\
+//                                 }
+/*}}}*/
 /*{{{  SOUNDEnable ()*/
 #define   SOUNDEnable           {\
-                                  (*SoundPin[SOUNDEN].pGpio).set_data    =  SoundPin[SOUNDEN].Mask;\
-                                  (*SoundPin[SOUNDEN].pGpio).dir        &= ~SoundPin[SOUNDEN].Mask;\
+				  gpio_direction_output (legoev3_sound_gpio[SOUNDEN], 1); \
+				  gpio_direction_input (legoev3_sound_gpio[SOUNDEN]); \
                                 }
+/*}}}*/
+/*{{{  OLDCODE (SOUNDDisable)*/
+//#define   SOUNDDisable          {\
+//                                  (*SoundPin[SOUNDEN].pGpio).clr_data    =  SoundPin[SOUNDEN].Mask;\
+//                                  (*SoundPin[SOUNDEN].pGpio).dir        &= ~SoundPin[SOUNDEN].Mask;\
+//                                }
 /*}}}*/
 /*{{{  SOUNDDisable ()*/
 #define   SOUNDDisable          {\
-                                  (*SoundPin[SOUNDEN].pGpio).clr_data    =  SoundPin[SOUNDEN].Mask;\
-                                  (*SoundPin[SOUNDEN].pGpio).dir        &= ~SoundPin[SOUNDEN].Mask;\
+				  gpio_direction_output (legoev3_sound_gpio[SOUNDEN], 0); \
+				  gpio_direction_input (legoev3_sound_gpio[SOUNDEN]); \
                                 }
 /*}}}*/
 /*{{{  SOUNDPwmPoweron ()*/
