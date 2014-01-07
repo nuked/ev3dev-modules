@@ -202,9 +202,6 @@ static UBYTE BufferWriteIndex;
 /*{{{  EHRPWMClkDisable ()*/
 #define   EHRPWMClkDisable              {\
                                           eHRPWM0[TBCTL]  = 0xC033;\
-/*                                        REGUnlock;\
-                                          iowrite32((ioread32(&SYSCFG0[CFGCHIP0]) & ~PLL_MASTER_LOCK),&SYSCFG0[0x60]);\
-                                          REGLock;*/\
                                         }
 /*}}}*/
 
@@ -215,17 +212,13 @@ static UBYTE BufferWriteIndex;
 /*{{{  EHRPWMClkEnable ()*/
 #define   EHRPWMClkEnable               {\
                                           eHRPWM0[TBCTL]  = 0xC030; \
-                                          REGUnlock;\
                                           iowrite32((ioread32(&SYSCFG0[CFGCHIP0]) | PLL_MASTER_LOCK),&SYSCFG0[0x60]);\
-                                          REGLock;\
                                         }
 /*}}}*/
 /*{{{  EHRPWMClkEnableTone ()*/
 #define   EHRPWMClkEnableTone           {\
                                           eHRPWM0[TBCTL]  = 0xDC30;\
-                                          REGUnlock;\
                                           iowrite32((ioread32(&SYSCFG0[CFGCHIP0]) | PLL_MASTER_LOCK),&SYSCFG0[0x60]);\
-                                          REGLock;\
                                         }
 /*}}}*/
 /*{{{  SETPwmPeriod (Prd)*/
@@ -280,9 +273,9 @@ static UBYTE BufferWriteIndex;
                                         }
 /*}}}*/
 /*{{{  OLDCODE (SOUNDEnable)*/
-// #define   SOUNDEnable           {\
-//                                   (*SoundPin[SOUNDEN].pGpio).set_data    =  SoundPin[SOUNDEN].Mask;\
-//                                   (*SoundPin[SOUNDEN].pGpio).dir        &= ~SoundPin[SOUNDEN].Mask;\
+// #define   SOUNDEnable           {
+//                                   (*SoundPin[SOUNDEN].pGpio).set_data    =  SoundPin[SOUNDEN].Mask;
+//                                   (*SoundPin[SOUNDEN].pGpio).dir        &= ~SoundPin[SOUNDEN].Mask;
 //                                 }
 /*}}}*/
 /*{{{  SOUNDEnable ()*/
@@ -292,9 +285,9 @@ static UBYTE BufferWriteIndex;
                                 }
 /*}}}*/
 /*{{{  OLDCODE (SOUNDDisable)*/
-//#define   SOUNDDisable          {\
-//                                  (*SoundPin[SOUNDEN].pGpio).clr_data    =  SoundPin[SOUNDEN].Mask;\
-//                                  (*SoundPin[SOUNDEN].pGpio).dir        &= ~SoundPin[SOUNDEN].Mask;\
+//#define   SOUNDDisable          {
+//                                  (*SoundPin[SOUNDEN].pGpio).clr_data    =  SoundPin[SOUNDEN].Mask;
+//                                  (*SoundPin[SOUNDEN].pGpio).dir        &= ~SoundPin[SOUNDEN].Mask;
 //                                }
 /*}}}*/
 /*{{{  SOUNDDisable ()*/
@@ -353,7 +346,8 @@ static const int legoev3_sound_gpio[SOUND_PINS] = {
 
 static const short legoev3_sound_pins[] = {
 	EV3_SOUND_EN,
-	EV3_SOUND_ARMA
+	EV3_SOUND_ARMA,
+	(-1)
 };
 
 /*}}}*/
@@ -412,10 +406,6 @@ static void sound_init_gpio (void)
 		pr_warning ("d_sound: legoev3_sound_pins setup failed: %d\n", ret);
 	}
 
-	// unlock
-//	REGUnlock;
-
-
 	for (Pin = 0; Pin < SOUND_PINS; Pin++) {
 		if (legoev3_sound_gpio[Pin] >= 0) {
 			gpio_request (legoev3_sound_gpio[Pin], "ev3dev_sound");
@@ -427,8 +417,6 @@ static void sound_init_gpio (void)
 		// SetGpio (SoundPin[Pin].Pin);
 	}
 
-	// lock
-//	REGLock;
 }
 /*}}}*/
 /*{{{  static void sound_free_gpio (void)*/
