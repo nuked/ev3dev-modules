@@ -3141,14 +3141,14 @@ void GetPeripheralBasePtr (ULONG Address, ULONG Size, ULONG **Ptr)
 {
 	/* eCAP0 pointer */
 //if (request_mem_region(Address,Size,MODULE_NAME) >= 0)
-	if (request_mem_region (Address, Size, "foo_pwm") >= 0) {
+	if (request_mem_region (Address, Size, "ev3dev_pwm") >= 0) {
 
 		*Ptr = (ULONG *) ioremap (Address, Size);
 
 		if (*Ptr != NULL) {
 // #ifdef DEBUG
 //    printk("%s memory Remapped from 0x%08lX to 0x%08lX\n",DEVICE_NAME,Address,(unsigned long)*Ptr);
-			printk ("%s memory Remapped from 0x%08lX to 0x%08lX\n", "bar_pwm", Address, (unsigned long) *Ptr);
+			printk ("ev3dev_pwm: memory Remapped from 0x%08lX to 0x%08lX\n", Address, (unsigned long) *Ptr);
 // #endif
 		} else {
 			printk ("Memory remap ERROR");
@@ -3246,7 +3246,27 @@ static int Device1Init (void)
 	SetGpioAnyEdgeIrq (IRQC_PINNO, IntC);
 	SetGpioAnyEdgeIrq (IRQD_PINNO, IntD);
 //  }
+
+	return 0;
 out_err:
+	/* better release the I/O memory regions, or leaves that subsystem in a mess */
+	iounmap (SYSCFG0);
+//  iounmap(SYSCFG1);
+//  iounmap(GPIO);
+	iounmap (eCAP0);
+	iounmap (eCAP1);
+	iounmap (TIMER64P3);
+	iounmap (eHRPWM1);
+//  iounmap(PLLC1);
+	iounmap (PSC1);
+
+	release_mem_region (0x01C14000, 0x190);
+	release_mem_region (0x01F02000, 0x2854);
+	release_mem_region (0x01F06000, 0x60);
+	release_mem_region (0x01F07000, 0x60);
+	release_mem_region (0x01F0D000, 0x80);
+	release_mem_region (0x01E27000, 0xA80);
+
 	return (Result);
 }
 /*}}}*/
@@ -3274,6 +3294,14 @@ static void Device1Exit (void)
 #ifdef DEBUG
 	printk ("  %s memory unmapped\n", DEVICE_NAME);
 #endif
+
+	release_mem_region (0x01C14000, 0x190);
+	release_mem_region (0x01F02000, 0x2854);
+	release_mem_region (0x01F06000, 0x60);
+	release_mem_region (0x01F07000, 0x60);
+	release_mem_region (0x01F0D000, 0x80);
+	release_mem_region (0x01E27000, 0xA80);
+
 }
 /*}}}*/
 /*{{{  OLDCODE*/

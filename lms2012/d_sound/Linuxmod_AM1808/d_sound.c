@@ -83,13 +83,14 @@ enum {
 static ULONG *SYSCFG0;
 static ULONG *PSC1;
 static UWORD *eHRPWM0;
-static void __iomem *GpioBase;
+
 static UWORD Duration;
 static UWORD Period;
 static UBYTE Level;
 static UBYTE TimerMode = READY_FOR_SAMPLES;
 static SOUND SoundDefault;
 static SOUND *pSound = &SoundDefault;
+
 static struct hrtimer Device1Timer;
 static ktime_t Device1Time;
 
@@ -324,16 +325,7 @@ enum SoundPins {
  *  \verbatim
  */
 
-INPIN SoundPin[SOUND_PINS] = {
-	{GP6_15, NULL, 0},	// SOUNDEN
-	{EPWM0B, NULL, 0},	// SOUND_ARMA
-};
-
-/*  \endverbatim
- *  \n
- */
-
-#define SND_SOUND_EN GP6_15
+#define SND_SOUND_EN GPIO_TO_PIN(6, 15)
 #define SND_SOUND_ARMA EPWM0B
 
 #define EV3_SOUND_EN EV3_GPIO6_15
@@ -350,73 +342,40 @@ static const short legoev3_sound_pins[] = {
 	(-1)
 };
 
-/*}}}*/
-/*{{{  void SetGpio (int Pin)*/
-/*
+/*  \endverbatim
+ *  \n
  */
-void SetGpio (int Pin)
-{
-	int Tmp = 0;
-	void __iomem *Reg;
 
-	while ((MuxRegMap[Tmp].Pin != -1) && (MuxRegMap[Tmp].Pin != Pin)) {
-		Tmp++;
-	}
-	if (MuxRegMap[Tmp].Pin == Pin) {
-		Reg = da8xx_syscfg0_base + 0x120 + (MuxRegMap[Tmp].MuxReg << 2);
 
-		*(u32 *) Reg &= MuxRegMap[Tmp].Mask;
-		*(u32 *) Reg |= MuxRegMap[Tmp].Mode;
-
-		if (Pin < NO_OF_GPIOS) {
-			//#define DEBUG
-#undef DEBUG
-#ifdef DEBUG
-			printk ("    GP%d_%-2d   0x%08X and 0x%08X or 0x%08X\n", (Pin >> 4), (Pin & 0x0F), (u32) Reg, MuxRegMap[Tmp].Mask, MuxRegMap[Tmp].Mode);
-#endif
-		} else {
-			//#define DEBUG
-#undef DEBUG
-#ifdef DEBUG
-			printk ("    FUNCTION 0x%08X and 0x%08X or 0x%08X\n", (u32) Reg, MuxRegMap[Tmp].Mask, MuxRegMap[Tmp].Mode);
-#endif
-		}
-	} else {
-		//#define DEBUG
-#undef DEBUG
-#ifdef DEBUG
-		printk ("*   GP%d_%-2d  ********* ERROR not found *********\n", (Pin >> 4), (Pin & 0x0F));
-#endif
-	}
-
-}
 /*}}}*/
 /*{{{  static void sound_init_gpio (void)*/
 /*
  *	does GPIO setup.
+ *	returns 0 on success, non-zero on failure.
  */
-static void sound_init_gpio (void)
+static int sound_init_gpio (void)
 {
 	int ret = 0;
-	int Pin;
+	int pin;
 
 #warning Move this to board-level init at some point (when d_pwm stuff goes).
 	ret = davinci_cfg_reg_list (legoev3_sound_pins);
 	if (ret) {
-		pr_warning ("d_sound: legoev3_sound_pins setup failed: %d\n", ret);
+		pr_warning ("ev3dev_sound: legoev3_sound_pins setup failed: %d\n", ret);
+		return ret;
 	}
 
-	for (Pin = 0; Pin < SOUND_PINS; Pin++) {
-		if (legoev3_sound_gpio[Pin] >= 0) {
-			gpio_request (legoev3_sound_gpio[Pin], "ev3dev_sound");
-			gpio_direction_input (legoev3_sound_gpio[Pin]);
+	for (pin = 0; pin < SOUND_PINS; pin++) {
+		if (legoev3_sound_gpio[pin] >= 0) {
+			ret = gpio_request (legoev3_sound_gpio[pin], "ev3dev_sound");
+			if (ret) {
+				pr_warning ("ev3dev_sound: failed to claim gpio pin 0x%x, gpio_request returned %d\n", legoev3_sound_gpio[pin], ret);
+				return ret;
+			}
+			gpio_direction_input (legoev3_sound_gpio[pin]);
 		}
-		// SoundPin[Pin].pGpio = (struct gpio_controller * __iomem) (GpioBase + ((SoundPin[Pin].Pin >> 5) * 0x28) + 0x10);
-		// SoundPin[Pin].Mask = (1 << (SoundPin[Pin].Pin & 0x1F));
-		// 
-		// SetGpio (SoundPin[Pin].Pin);
 	}
-
+	return 0;
 }
 /*}}}*/
 /*{{{  static void sound_free_gpio (void)*/
@@ -425,11 +384,11 @@ static void sound_init_gpio (void)
  */
 static void sound_free_gpio (void)
 {
-	int Pin;
+	int pin;
 
-	for (Pin = 0; Pin < SOUND_PINS; Pin++) {
-		if (legoev3_sound_gpio[Pin] >= 0) {
-			gpio_free (legoev3_sound_gpio[Pin]);
+	for (pin = 0; pin < SOUND_PINS; pin++) {
+		if (legoev3_sound_gpio[pin] >= 0) {
+			gpio_free (legoev3_sound_gpio[pin]);
 		}
 	}
 }
@@ -452,12 +411,12 @@ static void sound_free_gpio (void)
 void GetPeripheralBasePtr (ULONG Address, ULONG Size, ULONG **Ptr)
 {
 	/* eCAP0 pointer */
-	if (request_mem_region (Address, Size, "foo_sound") >= 0) {
+	if (request_mem_region (Address, Size, "ev3dev_sound") >= 0) {
 
 		*Ptr = (ULONG *) ioremap (Address, Size);
 
 		if (*Ptr != NULL) {
-			printk ("%s memory Remapped from 0x%08lX\n", "bar_sound", (unsigned long) *Ptr);
+			printk ("ev3dev_sound: memory Remapped from 0x%08lX\n", (unsigned long) *Ptr);
 		} else {
 			printk ("Memory remap ERROR");
 		}
@@ -774,6 +733,8 @@ static struct miscdevice Device1 = {
 /*}}}*/
 /*{{{  static int Device1Init (void)*/
 /*
+ *	initialises the sound device, registering the miscdevice entry.
+ *	returns 0 on success, non-zero on error.
  */
 static int Device1Init (void)
 {
@@ -891,8 +852,11 @@ static struct platform_device *sound = NULL;
  */
 static int sound_module_init (void)
 {
-	/* Note: GPIO region is handled upstream in ev3dev.
+	int ret;
+
+	/* Note: GPIO region is (should be) handled upstream in ev3dev.
 	 * FIXME: still need some clean-up here.
+	 * XXX: the conflict in I/O mapping may be causing some issue here.
 	 */
 
 // 	if (request_mem_region (DA8XX_GPIO_BASE, 0xD8, MODULE_NAME) >= 0) {
@@ -904,10 +868,24 @@ static int sound_module_init (void)
 // 		}
 // 	}
 
-	sound_init_gpio ();
-	Device1Init ();
+	ret = sound_init_gpio ();
+	if (ret) {
+		/* failed */
+		goto out_err0;
+	}
+
+	/* initialised GPIO okay, so do the rest */
+	ret = Device1Init ();
+	if (ret) {
+		goto out_err1;
+	}
 
 	return 0;
+
+out_err1:
+	sound_free_gpio ();
+out_err0:
+	return ret;
 }
 /*}}}*/
 /*{{{  static void sound_module_exit (void)*/
