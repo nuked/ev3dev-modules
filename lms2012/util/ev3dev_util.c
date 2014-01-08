@@ -1,8 +1,8 @@
 /*
- * ev3dev_register.c - helper routines to allow multiple ev3dev compatible
- *                     modules to create additional nodes under
+ * ev3dev_util.c - helper routines to allow multiple ev3dev compatible
+ *                 modules to create additional nodes under
  *
- *                     /sysfs/devices/platform/ev3dev
+ *                 /sysfs/devices/platform/ev3dev
  *
  * Copyright (c) 2013-2013 - Ralph Hempel
  *
