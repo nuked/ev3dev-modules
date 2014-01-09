@@ -326,7 +326,7 @@ enum SoundPins {
  */
 
 #define SND_SOUND_EN GPIO_TO_PIN(6, 15)
-#define SND_SOUND_ARMA EPWM0B
+#define SND_SOUND_ARMA (-1)			/* can't find an obvious GPIO pin that this shares (mux 3, mask 0x..ff0f, val 0x..0020) */
 
 #define EV3_SOUND_EN EV3_GPIO6_15
 #define EV3_SOUND_ARMA EV3_EPWM0B
