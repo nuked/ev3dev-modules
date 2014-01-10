@@ -87,17 +87,17 @@ struct platform_device *ev3dev = NULL;
 EXPORT_SYMBOL_GPL(ev3dev);
 
 /*}}}*/
-/*{{{  ev3dev_regioninfo[IO_COUNT] (struct __ev3dev_regioninfo), ev3dev_ioregions (ULONG **), ev3dev_mmiocount (int)*/
+/*{{{  ev3dev_regioninfo[IO_COUNT] (struct __ev3dev_regioninfo), ev3dev_ioregions (void **), ev3dev_mmiocount (int)*/
 static struct __ev3dev_regioninfo ev3dev_regioninfo[EV3IO_COUNT] = {
-	{"SYSCFG0",	0x01C14000,	0x190},
-	{"EHRPWM1",	0x01F02000,	0x2854},
-	{"ECAP0",	0x01F06000,	0x60},
-	{"ECAP1",	0x01F07000,	0x60},
-	{"TIMER64P3",	0x01F0D000,	0x80},
-	{"PSC1",	0x01E27000,	0xA80}
+	{"SYSCFG0",	32,	0x01C14000,	0x190},
+	{"EHRPWM1",	16,	0x01F02000,	0x2854},
+	{"ECAP0",	16,	0x01F06000,	0x60},
+	{"ECAP1",	16,	0x01F07000,	0x60},
+	{"TIMER64P3",	32,	0x01F0D000,	0x80},
+	{"PSC1",	32,	0x01E27000,	0xA80}
 };
 
-static ULONG *ev3dev_ioregions[EV3IO_COUNT];
+static void *ev3dev_ioregions[EV3IO_COUNT];
 static int ev3dev_mmiocount;
 
 /*}}}*/
@@ -118,15 +118,22 @@ static int ev3dev_init_regions (void)
 		void *p = request_mem_region (ev3dev_regioninfo[i].base, ev3dev_regioninfo[i].size, "ev3dev");
 		if (!p) {
 			printk (KERN_ERR "ev3dev: failed to request memory for region '%s', error %d\n", ev3dev_regioninfo[i].name, ret);
+			ret = -EIO;
 			goto out_err1;
 		}
 
-		ev3dev_ioregions[i] = (ULONG *)ioremap (ev3dev_regioninfo[i].base, ev3dev_regioninfo[i].size);
+		ev3dev_ioregions[i] = (void *)ioremap (ev3dev_regioninfo[i].base, ev3dev_regioninfo[i].size);
 		if (!ev3dev_ioregions[i]) {
 			printk (KERN_ERR "ev3dev: failed to remap I/O memory for region '%s'\n", ev3dev_regioninfo[i].name);
 			ret = -EIO;
 			goto out_err2;
 		}
+
+#if 0
+		printk (KERN_DEBUG "ev3dev_init_regions(): remapped region '%s' at 0x%8.8X - 0x%8.8X => 0x%8.8X\n",
+				ev3dev_regioninfo[i].name, ev3dev_regioninfo[i].base, ev3dev_regioninfo[i].base + (ev3dev_regioninfo[i].size - 1),
+				(unsigned int)ev3dev_ioregions[i]);
+#endif
 	}
 
 	return 0;
@@ -167,17 +174,17 @@ static void ev3dev_free_regions (void)
 }
 /*}}}*/
 
-/*{{{  ULONG **ev3dev_get_mmio_regions (void)*/
+/*{{{  void **ev3dev_get_mmio_regions (void)*/
 /*
  *	called to request access to EV3 I/O spaces.
  */
-ULONG **ev3dev_get_mmio_regions (void)
+void **ev3dev_get_mmio_regions (void)
 {
 	if (!ev3dev) {
 		return NULL;
 	}
 	ev3dev_mmiocount++;
-	return (ULONG **)ev3dev_ioregions;
+	return (void **)ev3dev_ioregions;
 }
 
 EXPORT_SYMBOL_GPL (ev3dev_get_mmio_regions);

@@ -823,7 +823,8 @@ static ULONG AVG_COUNTS[NO_OF_OUTPUT_PORTS] = { (2 * COUNTS_PER_PULSE_LM), (2 * 
 
 /*}}}*/
 /*{{{  FREERunning24bittimer ()*/
-#define   FREERunning24bittimer         ((ULONG)((((ULONG*)(ev3mem[EV3IO_TIMER64P3]))[TIM34])>>8))
+#define   FREERunning24bittimer         (EV3IO_READ32(ev3mem[EV3IO_TIMER64P3], TIM34) >> 8)
+
 /*}}}*/
 /*{{{  CLEARTachoArray (No)*/
 #define   CLEARTachoArray(No)           {\
@@ -852,13 +853,15 @@ static ULONG AVG_COUNTS[NO_OF_OUTPUT_PORTS] = { (2 * COUNTS_PER_PULSE_LM), (2 * 
 /*}}}*/
 /*{{{  EHRPWMClkDis () -- PWM clock disable*/
 #define   EHRPWMClkDis                  {\
-                                          ev3mem[EV3IO_EHRPWM1][TBCTL]  = (TB_UP | TB_DISABLE | TB_SHADOW | TB_SYNC_DISABLE | TB_HDIV1 | TB_DIV1 | TB_COUNT_FREEZE);\
+					  EV3IO_WRITE16((TB_UP | TB_DISABLE | TB_SHADOW | TB_SYNC_DISABLE | TB_HDIV1 | TB_DIV1 | TB_COUNT_FREEZE), \
+                                          	ev3mem[EV3IO_EHRPWM1], TBCTL); \
                                         }
 /*}}}*/
 /*{{{  EHRPWMClkEna () -- PWM clock enable*/
 #define   EHRPWMClkEna                  {\
-                                          ev3mem[EV3IO_EHRPWM1][TBCTL]  = (TB_UP | TB_DISABLE | TB_SHADOW | TB_SYNC_DISABLE | TB_HDIV1 | TB_DIV1 | TB_COUNT_UP);\
-                                          iowrite32((ioread32(&ev3mem[EV3IO_SYSCFG0][CFGCHIP1]) | TBCLKSYNC),&ev3mem[EV3IO_SYSCFG0][CFGCHIP1]); /*This is the clock to all eHRPWM's*/\
+                                          EV3IO_WRITE16((TB_UP | TB_DISABLE | TB_SHADOW | TB_SYNC_DISABLE | TB_HDIV1 | TB_DIV1 | TB_COUNT_UP), \
+					  	ev3mem[EV3IO_EHRPWM1], TBCTL); \
+                                          EV3IO_WRITE32(EV3IO_READ32 (ev3mem[EV3IO_SYSCFG0], CFGCHIP1) | TBCLKSYNC, ev3mem[EV3IO_SYSCFG0], CFGCHIP1); /*This is the clock to all eHRPWM's*/\
                                         }
 /*}}}*/
 /*{{{  OLDCODE*/
@@ -869,43 +872,46 @@ static ULONG AVG_COUNTS[NO_OF_OUTPUT_PORTS] = { (2 * COUNTS_PER_PULSE_LM), (2 * 
 /*}}}*/
 /*{{{  STOPPwm ()*/
 #define   STOPPwm                       {\
-                                             iowrite16(0x00, &ev3mem[EV3IO_ECAP0][0x15]);\
-                                             iowrite16(0x00, &ev3mem[EV3IO_ECAP1][0x15]);\
-                                             ev3mem[EV3IO_TIMER64P3][TGCR]  = 0x00000000;\
-                                             iowrite16(0x00, &ev3mem[EV3IO_EHRPWM1][TBCTL]);\
-                                             iowrite16(0x00, &ev3mem[EV3IO_EHRPWM1][CMPCTL]);\
+                                             EV3IO_WRITE16(0x00, ev3mem[EV3IO_ECAP0], 0x15);\
+                                             EV3IO_WRITE16(0x00, ev3mem[EV3IO_ECAP1], 0x15);\
+                                             EV3IO_WRITE32(0x00000000, ev3mem[EV3IO_TIMER64P3], TGCR);\
+                                             EV3IO_WRITE16(0x00, ev3mem[EV3IO_EHRPWM1], TBCTL);\
+                                             EV3IO_WRITE16(0x00, ev3mem[EV3IO_EHRPWM1], CMPCTL);\
                                              EHRPWMClkDis;\
                                         }
 /*}}}*/
 /*{{{  SETPwmFreqKHz (KHz)*/
 #define   SETPwmFreqKHz(KHz)            {\
-                                          ev3mem[EV3IO_EHRPWM1][TBPRD] = KHz; /* For Motor A and Motor B */\
-                                          ev3mem[EV3IO_ECAP0][CAP1]    = KHz; /* For Motor C             */\
-                                          ev3mem[EV3IO_ECAP1][CAP1]    = KHz; /* For Motor D             */\
+                                          EV3IO_WRITE16(KHz, ev3mem[EV3IO_EHRPWM1], TBPRD); /* For Motor A and Motor B */\
+                                          EV3IO_WRITE16(KHz, ev3mem[EV3IO_ECAP0], CAP1); /* For Motor C             */\
+                                          EV3IO_WRITE16(KHz, ev3mem[EV3IO_ECAP1], CAP1); /* For Motor D             */\
                                         }
 /*}}}*/
 /*{{{  SETUPPwmModules ()*/
 #define   SETUPPwmModules               { \
                                              /* eHRPWM Module */\
                                              EHRPWMClkDis;\
-                                             ev3mem[EV3IO_EHRPWM1][TBPHS]  = 0;\
-                                             ev3mem[EV3IO_EHRPWM1][TBCNT]  = 0;\
-                                             ev3mem[EV3IO_EHRPWM1][CMPCTL] = (CC_A_SHADOW | CC_B_SHADOW | CC_CTR_A_ZERO | CC_CTR_B_ZERO);\
-                                             ev3mem[EV3IO_EHRPWM1][AQCTLA] = 0x00000021;\
-                                             ev3mem[EV3IO_EHRPWM1][AQCTLB] = 0x00000201;\
+                                             EV3IO_WRITE16 (0x0000, ev3mem[EV3IO_EHRPWM1], TBPHS);\
+                                             EV3IO_WRITE16 (0x0000, ev3mem[EV3IO_EHRPWM1], TBCNT);\
+                                             EV3IO_WRITE16 ((CC_A_SHADOW | CC_B_SHADOW | CC_CTR_A_ZERO | CC_CTR_B_ZERO), \
+					     		ev3mem[EV3IO_EHRPWM1], CMPCTL);\
+                                             EV3IO_WRITE16 (0x0021, ev3mem[EV3IO_EHRPWM1], AQCTLA);\
+                                             EV3IO_WRITE16 (0x0201, ev3mem[EV3IO_EHRPWM1], AQCTLB);\
                                              EHRPWMClkEna;\
                                              \
                                              /* eCAP modules - APWM */\
-                                             (ev3mem[EV3IO_ECAP0])[TSCTR]    = 0;\
-                                             (ev3mem[EV3IO_ECAP1])[TSCTR]    = 0;\
-                                             (ev3mem[EV3IO_ECAP0])[CTRPHS]   = 0;\
-                                             (ev3mem[EV3IO_ECAP1])[CTRPHS]   = 0;\
-                                             ev3mem[EV3IO_ECAP0][ECCTL2]     = 0x0690;\
-                                             ev3mem[EV3IO_ECAP1][ECCTL2]     = 0x0690;\
-                                             ev3mem[EV3IO_TIMER64P3][TGCR]   = 0x00003304;\
-                                             ev3mem[EV3IO_TIMER64P3][TGCR]  |= 0x00000002;\
-                                             ev3mem[EV3IO_TIMER64P3][PRD34]  = 0xFFFFFFFF;\
-                                             ev3mem[EV3IO_TIMER64P3][TCR]    = 0x00800000;\
+                                             EV3IO_WRITE16 (0, ev3mem[EV3IO_ECAP0], TSCTR);\
+                                             EV3IO_WRITE16 (0, ev3mem[EV3IO_ECAP1], TSCTR);\
+                                             EV3IO_WRITE16 (0, ev3mem[EV3IO_ECAP0], CTRPHS);\
+                                             EV3IO_WRITE16 (0, ev3mem[EV3IO_ECAP1], CTRPHS);\
+                                             EV3IO_WRITE16 (0x0690, ev3mem[EV3IO_ECAP0], ECCTL2);\
+                                             EV3IO_WRITE16 (0x0690, ev3mem[EV3IO_ECAP1], ECCTL2);\
+					     \
+                                             EV3IO_WRITE32 (0x00003304, ev3mem[EV3IO_TIMER64P3], TGCR);\
+                                             EV3IO_WRITE32 (EV3IO_READ32 (ev3mem[EV3IO_TIMER64P3], TGCR) | 0x00000002, \
+					     		ev3mem[EV3IO_TIMER64P3], TGCR);\
+                                             EV3IO_WRITE32 (0xFFFFFFFF, ev3mem[EV3IO_TIMER64P3], PRD34);\
+                                             EV3IO_WRITE32 (0x00800000, ev3mem[EV3IO_TIMER64P3], TCR);\
                                                                               \
                                              /* Setup PWM */\
                                              SetDutyMA(0);\
@@ -1145,7 +1151,7 @@ void SetRegulationPower (UBYTE Port, SLONG Power)
  */
 void SetDutyMA (ULONG Duty)
 {
-	ev3mem[EV3IO_EHRPWM1][CMPA] = (UWORD)Duty;
+	EV3IO_WRITE16 ((UWORD)Duty, ev3mem[EV3IO_EHRPWM1], CMPA);
 }
 /*}}}*/
 /*{{{  void SetDutyMB (ULONG Duty)*/
@@ -1154,7 +1160,7 @@ void SetDutyMA (ULONG Duty)
  */
 void SetDutyMB (ULONG Duty)
 {
-	ev3mem[EV3IO_EHRPWM1][CMPB] = (UWORD)Duty;
+	EV3IO_WRITE16 ((UWORD)Duty, ev3mem[EV3IO_EHRPWM1], CMPB);
 }
 /*}}}*/
 /*{{{  void SetDutyMC (ULONG Duty)*/
@@ -1163,7 +1169,7 @@ void SetDutyMB (ULONG Duty)
  */
 void SetDutyMC (ULONG Duty)
 {
-	ev3mem[EV3IO_ECAP1][CAP2] = Duty;
+	EV3IO_WRITE16 ((UWORD)Duty, ev3mem[EV3IO_ECAP1], CAP2);
 }
 /*}}}*/
 /*{{{  void SetDutyMD (ULONG Duty)*/
@@ -1172,7 +1178,7 @@ void SetDutyMC (ULONG Duty)
  */
 void SetDutyMD (ULONG Duty)
 {
-	ev3mem[EV3IO_ECAP0][CAP2] = Duty;
+	EV3IO_WRITE16 ((UWORD)Duty, ev3mem[EV3IO_ECAP0], CAP2);
 }
 /*}}}*/
 
@@ -3184,20 +3190,6 @@ static int Device1Init (void)
 		return -1;
 	}
 
-#if 0
-#warning "Update this mess to use proper kernel methods instead of iomaps!"
-
-	GetPeripheralBasePtr (0x01C14000, 0x190, (ULONG **) & SYSCFG0);	/* SYSCFG0 pointer    */
-//  GetPeripheralBasePtr(0x01E2C000, 0x1C,  (ULONG**)&SYSCFG1);  /* SYSCFG1 pointer    */
-	GetPeripheralBasePtr (0x01F02000, 0x2854, (ULONG **) & eHRPWM1);	/* eHRPWM Pointer     */
-	GetPeripheralBasePtr (0x01F06000, 0x60, (ULONG **) & eCAP0);	/* eCAP0 pointer      */
-	GetPeripheralBasePtr (0x01F07000, 0x60, (ULONG **) & eCAP1);	/* eCAP1 pointer      */
-	GetPeripheralBasePtr (0x01F0D000, 0x80, (ULONG **) & TIMER64P3);	/* TIMER64P3 pointer  */
-//  GetPeripheralBasePtr(0x01E26000, 0xD4,  (ULONG**)&GPIO);     /* GPIO pointer       */
-//  GetPeripheralBasePtr(0x01E1A000, 0x1F8, (ULONG**)&PLLC1);    /* PLLC1 pointer      */
-	GetPeripheralBasePtr (0x01E27000, 0xA80, (ULONG **) & PSC1);	/* PSC1 pointer       */
-#endif
-
 	Result = misc_register (&Device1);
 	if (Result) {
 		printk ("  failed to register device %s\n", DEVICE_NAME);
@@ -3208,11 +3200,11 @@ static int Device1Init (void)
 	printk ("  %s device register succes\n", DEVICE_NAME);
 #endif
 
-	iowrite32 (0x00000003, &ev3mem[EV3IO_PSC1][0x291]);	/* Setup ePWM module power on  */
-	iowrite32 (0x00000003, &ev3mem[EV3IO_PSC1][0x48]);	/* Eval the NEXT field         */
+	EV3IO_WRITE32 (0x00000003, ev3mem[EV3IO_PSC1], 0x291);	/* Setup ePWM module power on  */
+	EV3IO_WRITE32 (0x00000003, ev3mem[EV3IO_PSC1], 0x48);	/* Eval the NEXT field         */
 
-	iowrite32 ((ioread32 (&ev3mem[EV3IO_PSC1][0x294]) | 0x00000003), &ev3mem[EV3IO_PSC1][0x294]);	/* Turn PSC on for the eCAP module */
-	iowrite32 ((ioread32 (&ev3mem[EV3IO_PSC1][0x48]) | 0x00000003), &ev3mem[EV3IO_PSC1][0x48]);	/* Execute the next step           */
+	EV3IO_WRITE32 ((EV3IO_READ32 (ev3mem[EV3IO_PSC1], 0x294) | 0x00000003), ev3mem[EV3IO_PSC1], 0x294);	/* Turn PSC on for the eCAP module */
+	EV3IO_WRITE32 ((EV3IO_READ32 (ev3mem[EV3IO_PSC1], 0x48) | 0x00000003), ev3mem[EV3IO_PSC1], 0x48);	/* Execute the next step           */
 
 	for (Tmp = 0; Tmp < NO_OF_OUTPUT_PORTS; Tmp++) {
 		memset (&Motor[Tmp], 0, sizeof (MOTOR));
@@ -3242,15 +3234,15 @@ static int Device1Init (void)
 	SyncMNos[1] = UNUSED_SYNC_MOTOR;
 
 	/* Setup the PWM peripherals */
-	printk ("TIMER64P3[TGCR]  = %lx\n", (((ULONG *) (ev3mem[EV3IO_TIMER64P3]))[TGCR]));
-	printk ("TIMER64P3[PRD34] = %lx\n", (((ULONG *) (ev3mem[EV3IO_TIMER64P3]))[PRD34]));
-	printk ("TIMER64P3[TCR]   = %lx\n", (((ULONG *) (ev3mem[EV3IO_TIMER64P3]))[TCR]));
+	printk ("TIMER64P3[TGCR]  = %lx\n", EV3IO_READ32 (ev3mem[EV3IO_TIMER64P3], TGCR));
+	printk ("TIMER64P3[PRD34] = %lx\n", EV3IO_READ32 (ev3mem[EV3IO_TIMER64P3], PRD34));
+	printk ("TIMER64P3[TCR]   = %lx\n", EV3IO_READ32 (ev3mem[EV3IO_TIMER64P3], TCR));
 
 	SETUPPwmModules;
 
-	printk ("TIMER64P3[TGCR]  = %lx\n", (((ULONG *) (ev3mem[EV3IO_TIMER64P3]))[TGCR]));
-	printk ("TIMER64P3[PRD34] = %lx\n", (((ULONG *) (ev3mem[EV3IO_TIMER64P3]))[PRD34]));
-	printk ("TIMER64P3[TCR]   = %lx\n", (((ULONG *) (ev3mem[EV3IO_TIMER64P3]))[TCR]));
+	printk ("TIMER64P3[TGCR]  = %lx\n", EV3IO_READ32 (ev3mem[EV3IO_TIMER64P3], TGCR));
+	printk ("TIMER64P3[PRD34] = %lx\n", EV3IO_READ32 (ev3mem[EV3IO_TIMER64P3], PRD34));
+	printk ("TIMER64P3[TCR]   = %lx\n", EV3IO_READ32 (ev3mem[EV3IO_TIMER64P3], TCR));
 
 	/* Setup interrupt for the tacho int pins */
 // FIXME if you ever want interrupts for IRQs
@@ -4356,7 +4348,7 @@ static ssize_t store_pwm_command (struct device *dev, struct device_attribute *a
 	struct ev3dev_pwm_command_attribute *ea = to_ev3dev_pwm_command_attr (attr);
 
 	const char *start = buf;
-	char *end = buf;
+	char *end = (char *)buf;
 	const char *last = buf + count;
 
 	memset (ea->buf, 0, 16);
