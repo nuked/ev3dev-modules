@@ -402,10 +402,6 @@ enum AdcPowerPins {
 /*{{{  forward declarations*/
 static void input_port_float (int port);
 
-static int module_init (void);
-static void module_exit (void);
-
-
 /*}}}*/
 
 /*{{{  OLDCODE*/
@@ -435,7 +431,7 @@ static const UBYTE InputReadMap[INPUTADC] = { 6, 8, 10, 12, 5, 7, 9, 11, 1, 0, 1
  */
 /*}}}*/
 
-/*{{{  GPIO mappings for input ports, output ports and ADC power*/
+/*{{{  GPIO and DaVinci mappings for input ports, output ports and ADC power*/
 /*! \page AnalogModuleResources Gpios and Resources used for Module
  *
  *  Describes use of gpio and resources\n
@@ -508,6 +504,55 @@ static const int legoev3_oport_gpio[][OUTPUT_PORT_PINS] = {
 static const int legoev3_adcpower_gpio[ADC_POWER_PINS] = {
 	GPIO_TO_PIN(6, 14),	/* 5VONIGEN */
 	GPIO_TO_PIN(0, 6)	/* ADCBATEN */
+};
+
+
+static const short legoev3_iport_pins[] = {
+	EV3_GPIO8_10,			/* input port 1 */
+	EV3_GPIO2_2,
+	EV3_GPIO0_2,
+	EV3_GPIO0_15,
+	EV3_GPIO8_11,
+	EV3_GPIO8_12,			/* input port 2 */
+	EV3_GPIO8_15,
+	EV3_GPIO0_14,
+	EV3_GPIO0_13,
+	EV3_GPIO8_14,
+	EV3_GPIO8_9,			/* input port 3 */
+	EV3_GPIO7_11,
+	EV3_GPIO0_12,
+	EV3_GPIO1_14,
+	EV3_GPIO7_9,
+	EV3_GPIO6_4,			/* input port 4 */
+	EV3_GPIO7_8,
+	EV3_GPIO1_13,
+	EV3_GPIO1_15,
+	EV3_GPIO7_10,
+	(-1)
+};
+
+static const short legoev3_oport_pins[] = {
+	EV3_GPIO0_3,			/* output port 1 */
+	EV3_GPIO4_12,
+	EV3_GPIO5_4,
+	EV3_GPIO5_11,
+	EV3_GPIO0_4,
+	EV3_GPIO3_15,			/* output port 2 */
+	EV3_GPIO3_6,
+	EV3_GPIO2_5,
+	EV3_GPIO5_8,
+	EV3_GPIO2_9,
+	EV3_GPIO5_10,			/* output port 3 */
+	EV3_GPIO5_3,
+	EV3_GPIO3_2,
+	EV3_GPIO5_13,
+	EV3_GPIO3_14,
+	EV3_GPIO6_8,			/* output port 4 */
+	EV3_GPIO5_9,
+	EV3_GPIO5_15,
+	EV3_GPIO6_9,
+	EV3_GPIO2_8,
+	(-1)
 };
 /*}}}*/
 
@@ -790,9 +835,10 @@ INPIN *pAdcPowerPin[] = {
 //*****************************************************************************
 
 
-static void __iomem *GpioBase;
+// static void __iomem *GpioBase;
 
-void SetGpio (int Pin) /*{{{*/
+#if 0
+void SetGpio (int Pin) /*{{{  OLDCODE*/
 {
 	int Tmp = 0;
 	void __iomem *Reg;
@@ -823,14 +869,80 @@ void SetGpio (int Pin) /*{{{*/
 }
 
 /*}}}*/
-void InitGpio (void) /*{{{*/
+#endif
+
+/*{{{  static int analog_init_gpio (void)*/
+/*
+ *	initialises analog module GPIO stuff.
+ *	returns 0 on success, < 0 on failure.
+ */
+static int analog_init_gpio (void)
 {
+	int ret = 0;
+	int i;
+
+	ret = davinci_cfg_reg_list (legoev3_iport_pins);
+	if (ret) {
+		printk (KERN_WARNING MODULE_NAME ": failed to configure DaVinci input port pins, error %d", ret);
+		goto out_err0;
+	}
+	ret = davinci_cfg_reg_list (legoev3_oport_pins);
+	if (ret) {
+		printk (KERN_WARNING MODULE_NAME ": failed to configure DaVinci output port pins, error %d", ret);
+		goto out_err0;
+	}
+	/* FIXME: ADC pins for power */
+
+	/*{{{  configure inputs*/
+	for (i=0; i<NO_OF_INPUT_PORTS; i++) {
+		int pin;
+
+		for (pin=0; pin<INPUT_PORT_PINS; pin++) {
+			if (legoev3_iport_gpio[i][pin] >= 0) {
+				ret = gpio_request (legoev3_iport_gpio[i][pin], "ev3dev_analog");
+				if (ret) {
+					printk (KERN_WARNING MODULE_NAME ": failed to claim gpio pin 0x%x, error %d\n",
+							legoev3_iport_gpio[i][pin], ret);
+					goto out_err0;
+				}
+				gpio_direction_input (legoev3_iport_gpio[i][pin]);
+			}
+		}
+	}
+
+	/*}}}*/
+	/*{{{  configure outputs*/
+	for (i=0; i<NO_OF_OUTPUT_PORTS; i++) {
+		int pin;
+
+		for (pin=0; pin<OUTPUT_PORT_PINS; pin++) {
+			if (legoev3_oport_gpio[i][pin] >= 0) {
+				ret = gpio_request (legoev3_oport_gpio[i][pin], "ev3dev_analog");
+				if (ret) {
+					printk (KERN_WARNING MODULE_NAME ": failed to claim gpio pin 0x%x, error %d\n",
+							legoev3_oport_gpio[i][pin], ret);
+					goto out_err0;
+				}
+				gpio_direction_input (legoev3_oport_gpio[i][pin]);
+			}
+		}
+	}
+
+	/*}}}*/
+
+	return 0;
+out_err0:
+	/* may have leftover GPIO requests, but leave to kernel to clean-up */
+	return ret;
+
+#if 0
 	int Port;
 	int Pin;
 
 	// unlock
-	REGUnlock;
+//	REGUnlock;
 
+	/*{{{  OLDCODE*/
 	memcpy (InputPortPin, pInputPortPin[Hw], sizeof (EP2_InputPortPin));
 	if (memcmp ((const void *) InputPortPin, (const void *) pInputPortPin[Hw], sizeof (EP2_InputPortPin)) != 0) {
 		printk ("%s InputPortPin tabel broken!\n", MODULE_NAME);
@@ -849,6 +961,8 @@ void InitGpio (void) /*{{{*/
 			}
 		}
 	}
+	/*}}}*/
+	/*{{{  OLDCODE*/
 #ifdef DEBUG
 	printk ("  Adc spi\n");
 #endif
@@ -858,6 +972,8 @@ void InitGpio (void) /*{{{*/
 
 		SetGpio (AdcSpiPin[Pin].Pin);
 	}
+	/*}}}*/
+	/*{{{  OLDCODE*/
 	memcpy (OutputPortPin, pOutputPortPin[Hw], sizeof (EP2_OutputPortPin));
 	if (memcmp ((const void *) OutputPortPin, (const void *) pOutputPortPin[Hw], sizeof (EP2_OutputPortPin)) != 0) {
 		printk ("%s OutputPortPin tabel broken!\n", MODULE_NAME);
@@ -875,6 +991,8 @@ void InitGpio (void) /*{{{*/
 			}
 		}
 	}
+	/*}}}*/
+	/*{{{  OLDCODE*/
 #ifdef DEBUG
 	printk ("  Adc power\n");
 #endif
@@ -891,14 +1009,38 @@ void InitGpio (void) /*{{{*/
 			SetGpio (AdcPowerPin[Pin].Pin);
 		}
 	}
+	/*}}}*/
 
 	// Disable pull up/down
 	PUDisable;
 
 	// lock
-	REGLock;
+//	REGLock;
+#endif
 }
 /*}}}*/
+/*{{{  static void analog_free_gpio (void)*/
+/*
+ *	frees the various GPIO resources.
+ */
+static void analog_free_gpio (void)
+{
+	int i, pin;
+
+	for (i=0; i<NO_OF_INPUT_PORTS; i++) {
+		for (pin=0; pin<INPUT_PORT_PINS; pin++) {
+			gpio_free (legoev3_iport_gpio[i][pin]);
+		}
+	}
+	for (i=0; i<NO_OF_OUTPUT_PORTS; i++) {
+		for (pin=0; pin<OUTPUT_PORT_PINS; pin++) {
+			gpio_free (legoev3_oport_gpio[i][pin]);
+		}
+	}
+	return;
+}
+/*}}}*/
+
 /*{{{  macros*/
 #define   PINFloat(port,pin)            {\
                                           (*InputPortPin[port][pin].pGpio).dir |=  InputPortPin[port][pin].Mask;\
