@@ -40,6 +40,10 @@
 #include <linux/irq.h>
 #include <asm/gpio.h>
 
+#if 0
+#include <linux/pwm/ehrpwm.h>
+#endif
+
 #warning "The following include is only temporary for GetPeripheralBase"
 #include <asm/gpio.h>
 
@@ -48,12 +52,19 @@
 #include "ev3dev_util.h"
 #include "ev3dev_dev.h"
 
+#ifndef CONFIG_DAVINCI_EHRPWM
+#error "This requires the EHRPWM module to be enabled"
+#endif
+
+
 /*{{{  assorted device constants*/
 #define DEVICE_NAME "ev3dev_pwm"
 
 #define EV3DEV_PWM_OFFSET_VER_MAJOR	0x00
 #define EV3DEV_PWM_OFFSET_VER_MINOR	0x01
 
+#define EV3DEV_PWM_EHRPWM1A_NAME	"ehrpwm.1:0"
+#define EV3DEV_PWM_EHRPWM1B_NAME	"ehrpwm.1:1"
 
 #define   SOFT_TIMER_MS                 2
 #define   SOFT_TIMER_SETUP              (SOFT_TIMER_MS * 1000000)
@@ -278,8 +289,8 @@ typedef struct {
 /*}}}*/
 
 /*{{{  forward declarations*/
-static int ModuleInit (void);
-static void ModuleExit (void);
+static int ev3dev_pwm_doinit (void);
+static void ev3dev_pwm_doexit (void);
 
 static irqreturn_t IntA (int irq, void *dev);
 static irqreturn_t IntB (int irq, void *dev);
@@ -297,57 +308,6 @@ void SetDutyMB (ULONG Duty);
 void SetDutyMC (ULONG Duty);
 void SetDutyMD (ULONG Duty);
 
-/*}}}*/
-
-/*{{{  OLDCODE*/
-// #include  <linux/kernel.h>
-// #include  <linux/fs.h>
-// #include  <linux/signal.h>
-// #include  <linux/sched.h>
-// 
-// #ifndef   PCASM
-// #include  <linux/ioport.h>
-// #include  <asm/gpio.h>
-// #include  <asm/uaccess.h>
-// #include  <linux/module.h>
-// #include  <linux/miscdevice.h>
-// 
-// #include  <linux/mm.h>
-// #include  <linux/hrtimer.h>
-// 
-// #include  <linux/init.h>
-// #include  <asm/siginfo.h>     //siginfo
-// #include  <linux/rcupdate.h>  //rcu_read_lock
-// #include  <linux/uaccess.h>
-// #include  <linux/debugfs.h>
-// 
-// #include  <asm/io.h>
-// #include  <asm/uaccess.h>
-// 
-// #include  <linux/irq.h>
-// #include  <linux/interrupt.h>
-
-// ------------------------------------------------------------------------------
-// Here's where we put the generic includes and defines from the kernel
-// module that is helpfully provided by TI at drivers/pwm/ecap_cap.c
-//
-// That module is helpful as a source for code samples, but it's more useful
-// as a polled file interface, not as an interrupt driven capture mechanism
-// as intended here.
-
-
-// #include <linux/platform_device.h>
-// #include <linux/err.h>
-// #include <linux/clk.h>
-// #include <linux/io.h>
-// #include <linux/pwm/pwm.h>
-// #include <linux/pwm/ecap_cap.h>
-// #include <linux/slab.h>
-// #include <linux/proc_fs.h>
-// 
-// #include <mach/common.h>
-// // #include <mach/da8xx.h>
-// #include <mach/mux.h>
 /*}}}*/
 
 /*{{{  eCAP register offsets.  XXX: these replace some earlier enums*/
@@ -372,37 +332,6 @@ void SetDutyMD (ULONG Duty);
 
 /*}}}*/
 
-/*{{{  OLDCODE*/
-// #define PROCFS_MAX_SIZE              20
-// #define PROCFS_NAME          "ev3dev_pwm"
-// 
-// // struct davinci_soc_info *soc_info = &davinci_soc_info;
-// // printk(KERN_INFO "%08x \n", soc_info->timer_info->timers[3].base );
-// 
-// 
-// // static char          procfs_read_buffer[PROCFS_MAX_SIZE];
-// // static unsigned long procfs_read_buffer_size = 0;
-// // 
-// // static char          procfs_write_buffer[PROCFS_MAX_SIZE];
-// // static unsigned long procfs_write_buffer_size = 0;
-// 
-// static struct proc_dir_entry *procfs_file;
-// 
-// MODULE_LICENSE("GPL");
-// MODULE_AUTHOR("The LEGO Group");
-// MODULE_DESCRIPTION(MODULE_NAME);
-// MODULE_SUPPORTED_DEVICE(DEVICE_NAME);
-// 
-// module_init(ModuleInit);
-// module_exit(ModuleExit);
-
-// #include  <mach/mux.h>
-// 
-// #else
-// // Keep Eclipse happy
-// #endif
-/*}}}*/
-
 /*{{{  enum OutputPortPins: output pins for motors */
 enum OutputPortPins {
 	PWM,
@@ -422,140 +351,6 @@ enum OutputPortPins {
 #define   IRQC_PINNO                  (PWM_OUTPUTC_INT)
 #define   IRQD_PINNO                  (PWM_OUTPUTD_INT)
 
-/*}}}*/
-
-/*{{{  OLDCODE*/
-// /* EP2 hardware have sanyo motor driver */
-// INPIN     EP2_OutputPortPin[][OUTPUT_PORT_PINS] =
-// {
-//   { // Output port A
-//     { EPWM1B , NULL, 0 }, // PWM motor A (GPIO 2_14)
-//     { GP3_15 , NULL, 0 }, // DIR0 A
-//     { GP3_6  , NULL, 0 }, // DIR1 A
-//     { GP5_11 , NULL, 0 }, // INT  A
-//     { GP0_4  , NULL, 0 }, // DIR  A
-//     { -1     , NULL, 0 }, // Sleep AB
-//     { -1     , NULL, 0 }, // Fault AB
-//   },
-//   { // Output port B
-//     { EPWM1A , NULL, 0 }, // PWM motor B (GPIO 2_15)
-//     { GP2_1  , NULL, 0 }, // DIR0 B
-//     { GP0_3  , NULL, 0 }, // DIR1 B
-//     { GP5_8  , NULL, 0 }, // INT  B
-//     { GP2_9  , NULL, 0 }, // DIR  B
-//     { -1     , NULL, 0 }, // Sleep AB
-//     { -1     , NULL, 0 }, // Fault AB
-//   },
-//   { // Output port C
-//     { APWM0  , NULL, 0 }, // PWM motor C (GPIO 8_7)
-//     { GP6_8  , NULL, 0 }, // DIR0 C
-//     { GP5_9  , NULL, 0 }, // DIR1 C
-//     { GP5_13 , NULL, 0 }, // INT  C
-//     { GP3_14 , NULL, 0 }, // DIR  C
-//     { -1     , NULL, 0 }, // Sleep AB
-//     { -1     , NULL, 0 }, // Fault AB
-//   },
-//   { // Output port D
-//     { APWM1  , NULL, 0 }, // PWM MOTOR D (GPIO 0_0)
-//     { GP5_3  , NULL, 0 }, // DIR0 D
-//     { GP5_10 , NULL, 0 }, // DIR1 D
-//     { GP6_9  , NULL, 0 }, // INT  D
-//     { GP2_8  , NULL, 0 }, // DIR  D
-//     { -1     , NULL, 0 }, // Sleep AB
-//     { -1     , NULL, 0 }, // Fault AB
-//   },
-// };
-// 
-// 
-// /* FINALB have TI motor driver */
-// INPIN     FINALB_OutputPortPin[][OUTPUT_PORT_PINS] =
-// {
-//   { // Output port A
-//     { EPWM1A , NULL, 0 }, // PWM motor A (GPIO 2_15)
-//     { GP0_3  , NULL, 0 }, // DIR0 A
-//     { GP4_12 , NULL, 0 }, // DIR1 A
-//     { GP5_11 , NULL, 0 }, // INT  A
-//     { GP0_4  , NULL, 0 }, // DIR  A
-//     { GP3_10 , NULL, 0 }, // Sleep AB
-//     { GP2_0  , NULL, 0 }, // Fault AB
-//   },
-//   { // Output port B
-//     { EPWM1B , NULL, 0 }, // PWM motor B (GPIO 2_14)
-//     { GP3_15 , NULL, 0 }, // DIR0 B
-//     { GP3_6  , NULL, 0 }, // DIR1 B
-//     { GP5_8  , NULL, 0 }, // INT  B
-//     { GP2_9  , NULL, 0 }, // DIR  B
-//     { GP3_10 , NULL, 0 }, // Sleep AB - Same as above
-//     { GP2_0  , NULL, 0 }, // Fault AB - Same as above
-//   },
-//   { // Output port C
-//     { APWM1  , NULL, 0 }, // PWM motor C (GPIO 0_0)
-//     { GP5_10 , NULL, 0 }, // DIR0 C
-//     { GP5_3  , NULL, 0 }, // DIR1 C
-//     { GP5_13 , NULL, 0 }, // INT  C
-//     { GP3_14 , NULL, 0 }, // DIR  C
-//     { GP2_3  , NULL, 0 }, // Sleep CD
-//     { GP6_0  , NULL, 0 }, // Fault CD
-//   },
-//   { // Output port D
-//     { APWM0  , NULL, 0 }, // PWM MOTOR D (GPIO 8_7)
-//     { GP6_8  , NULL, 0 }, // DIR0 D
-//     { GP5_9  , NULL, 0 }, // DIR1 D
-//     { GP6_9  , NULL, 0 }, // INT  D
-//     { GP2_8  , NULL, 0 }, // DIR  D
-//     { GP2_3  , NULL, 0 }, // Sleep CD - Same as above
-//     { GP6_0  , NULL, 0 }, // Fault CD - Same as above
-//   },
-// };
-// 
-// 
-// INPIN     FINAL_OutputPortPin[][OUTPUT_PORT_PINS] =
-// {
-//   { // Output port A
-//     { EPWM1A , NULL, 0 }, // PWM motor A (GPIO 2_15)
-//     { GP0_3  , NULL, 0 }, // DIR0 A
-//     { GP4_12 , NULL, 0 }, // DIR1 A
-//     { GP5_11 , NULL, 0 }, // INT  A
-//     { GP0_4  , NULL, 0 }, // DIR  A
-//     { GP3_10 , NULL, 0 }, // Sleep AB
-//     { GP2_0  , NULL, 0 }, // Fault AB
-//   },
-//   { // Output port B
-//     { EPWM1B , NULL, 0 }, // PWM motor B (GPIO 2_14)
-//     { GP3_15 , NULL, 0 }, // DIR0 B
-//     { GP3_6  , NULL, 0 }, // DIR1 B
-//     { GP5_8  , NULL, 0 }, // INT  B
-//     { GP2_9  , NULL, 0 }, // DIR  B
-//     { GP3_10 , NULL, 0 }, // Sleep AB - Same as above
-//     { GP2_0  , NULL, 0 }, // Fault AB - Same as above
-//   },
-//   { // Output port C
-//     { APWM1  , NULL, 0 }, // PWM motor C (GPIO 0_0)
-//     { GP5_10 , NULL, 0 }, // DIR0 C
-//     { GP5_3  , NULL, 0 }, // DIR1 C
-//     { GP5_13 , NULL, 0 }, // INT  C
-//     { GP3_14 , NULL, 0 }, // DIR  C
-//     { GP2_3  , NULL, 0 }, // Sleep CD
-//     { GP6_0  , NULL, 0 }, // Fault CD
-//   },
-//   { // Output port D
-//     { APWM0  , NULL, 0 }, // PWM MOTOR D (GPIO 8_7)
-//     { GP6_8  , NULL, 0 }, // DIR0 D
-//     { GP5_9  , NULL, 0 }, // DIR1 D
-//     { GP6_9  , NULL, 0 }, // INT  D
-//     { GP2_8  , NULL, 0 }, // DIR  D
-//     { GP2_3  , NULL, 0 }, // Sleep CD - Same as above
-//     { GP6_0  , NULL, 0 }, // Fault CD - Same as above
-//   },
-// };
-// 
-// 
-// INPIN     *pOutputPortPin[] =
-// {
-//   [FINAL]     =   (INPIN*)&FINAL_OutputPortPin[0],    //  FINAL   platform
-//   [FINALB]    =   (INPIN*)&FINALB_OutputPortPin[0],   //  FINALB  platform
-//   [EP2]       =   (INPIN*)&EP2_OutputPortPin[0],      //  EP2     platform
-// };
 /*}}}*/
 
 /*{{{  output to GPIO mapping*/
@@ -668,17 +463,12 @@ static const short *legoev3_output_pins[] = {
  */
 
 /*{{{  global vars*/
-static ULONG **ev3mem = NULL;
+static void **ev3mem = NULL;
 
-// static ULONG *GPIO;
-// static ULONG *SYSCFG0;
-// static ULONG *SYSCFG1;
-// static ULONG *PLLC1;
-// static ULONG *PSC1;
-// static UWORD *eHRPWM1;
-// static UWORD *eCAP0;
-// static UWORD *eCAP1;
-// static ULONG *TIMER64P3;
+#if 0
+static struct pwm_device *ehrpwm_1_0 = NULL;		/* eHRPWM1A for motor A */
+static struct pwm_device *ehrpwm_1_1 = NULL;		/* eHRPWM1B for motor B */
+#endif
 
 static MOTOR Motor[NO_OF_OUTPUT_PORTS];
 static SLONG *(StepPowerSteps[NO_OF_OUTPUT_PORTS]);
@@ -3184,12 +2974,6 @@ static int Device1Init (void)
 	int Result = -1;
 	UBYTE Tmp;
 
-	ev3mem = ev3dev_get_mmio_regions ();
-	if (!ev3mem) {
-		printk (KERN_ERR "ev3dev_pwm: failed to get mapped I/O regions from ev3dev\n");
-		return -1;
-	}
-
 	Result = misc_register (&Device1);
 	if (Result) {
 		printk ("  failed to register device %s\n", DEVICE_NAME);
@@ -3272,10 +3056,6 @@ static void Device1Exit (void)
 #ifdef DEBUG
 	printk ("  %s device unregistered\n", DEVICE_NAME);
 #endif
-	if (ev3mem) {
-		ev3dev_release_mmio_regions ();
-		ev3mem = NULL;
-	}
 	return;
 }
 /*}}}*/
@@ -3981,283 +3761,53 @@ UBYTE dCalculateSpeed (UBYTE No, SBYTE *pSpeed)
 
 /*}}}*/
 
-/*{{{  OLDCODE (Device2Write)*/
-// /*! \page PWMModule
-//  *
-//  *  <hr size="1"/>
-//  *  <b>     write </b>
-//  */
-//  /*! \brief    Device2Write
-//  *
-//  *  Only used for daisy chaining to ensure Busy flags being set from when message has been
-//  *  received until being executed by the VM
-//  *
-//  */
-// static ssize_t Device2Write(struct file *File,const char *Buffer,size_t Count,loff_t *Data)
-// {
-//   int     Lng     = 0;
-//   SBYTE   Buf[20];
-// 
-//   copy_from_user(Buf, Buffer, Count);
-// 
-//   ReadyStatus |= Buf[0];   // Set Ready flag
-//   TestStatus  |= Buf[0];   // Set Test flag
-// 
-//   return (Lng);
-// }
-// 
-/*}}}*/
-/*{{{  OLDCODE (Device2Read)*/
-// 
-// /*! \page PWMModule
-//  *
-//  *  <hr size="1"/>
-//  *  <b>     read </b>
-//  *
-//  *
-//  */
-// /*! \brief    Device2Read
-//  *
-//  */
-// static ssize_t Device2Read(struct file *File,char *Buffer,size_t Count,loff_t *Offset)
-// {
-//   int     Lng     = 0;
-//   return (Lng);
-// }
-/*}}}*/
-/*{{{  OLDCODE (Device2MMap)*/
-// 
-// #define     SHM_LENGTH    (sizeof(MotorData))
-// #define     NPAGES        ((SHM_LENGTH + PAGE_SIZE - 1) / PAGE_SIZE)
-// static void *kmalloc_ptr;
-// 
-// 
-// static int Device2Mmap(struct file *filp, struct vm_area_struct *vma)
-// {
-//    int ret;
-// 
-//    ret = remap_pfn_range(vma,vma->vm_start,virt_to_phys((void*)((unsigned long)pMotor)) >> PAGE_SHIFT,vma->vm_end-vma->vm_start,PAGE_SHARED);
-// 
-//    if (ret != 0)
-//    {
-//      ret  =  -EAGAIN;
-//    }
-// 
-//    return (ret);
-// }
-/*}}}*/
-/*{{{  OLDCODE (struct miscdevice Device2 & fileops)*/
-// 
-// 
-// static    const struct file_operations Device2Entries =
-// {
-//   .owner        = THIS_MODULE,
-//   .read         = Device2Read,
-//   .write        = Device2Write,
-//   .mmap         = Device2Mmap,
-// };
-// 
-// 
-// static    struct miscdevice Device2 =
-// {
-//   MISC_DYNAMIC_MINOR,
-//   DEVICE2_NAME,
-//   &Device2Entries
-// };
-// 
-/*}}}*/
-
-/*{{{  static int Device2Init (void)*/
-/*
- *	initialises device 2 -- mostly a null activity, just clears-out motor data.
- */
-static int Device2Init (void)
-{
-	int Result = 0;
-//   int       i;
-//  MOTORDATA *pTmp;
-
-//  Result  =  misc_register(&Device2);
-//  if (Result)
-//  {
-//    printk("  %s device register failed\n",DEVICE2_NAME);
-//  }
-//  else
-//  { // allocate kernel shared memory for tacho counts and speed
-//
-//    if ((kmalloc_ptr = kmalloc((NPAGES + 2) * PAGE_SIZE, GFP_KERNEL)) != NULL)
-//    {
-//      pTmp = (MOTORDATA*)((((unsigned long)kmalloc_ptr) + PAGE_SIZE - 1) & PAGE_MASK);
-//      for (i = 0; i < NPAGES * PAGE_SIZE; i += PAGE_SIZE)
-//      {
-//        SetPageReserved(virt_to_page(((unsigned long)pTmp) + i));
-//      }
-//      pMotor =  pTmp;
-//      memset(pMotor,0,sizeof(MotorData));
-	memset (MotorData, 0, sizeof (MotorData));
-//
-//#ifdef DEBUG
-//      printk("  %s device register succes\n",DEVICE2_NAME);
-//#endif
-//    }
-//    else
-//    {
-//      printk("  %s kmalloc failed !!\n",DEVICE2_NAME);
-//    }
-//  }
-	return (Result);
-}
-/*}}}*/
-/*{{{  static void Device2Exit (void)*/
-/*
- *	cleans-up device 2 (no-op).
- */
-static void Device2Exit (void)
-{
-	/*{{{  OLDCODE*/
-//  MOTORDATA   *pTmp;
-//  int         i;
-
-//  pTmp    =  pMotor;
-//  pMotor  =  MotorData;
-//  // free shared memory
-//  for (i = 0; i < NPAGES * PAGE_SIZE; i+= PAGE_SIZE)
-//  {
-//    ClearPageReserved(virt_to_page(((unsigned long)pTmp) + i));
-//#ifdef DEBUG
-//    printk("  %s memory page %d unmapped\n",DEVICE_NAME,i);
-//#endif
-//  }
-//  kfree(kmalloc_ptr);
-//
-//  misc_deregister(&Device2);
-//#ifdef DEBUG
-//  printk("  %s device unregistered\n",DEVICE2_NAME);
-//#endif
-	/*}}}*/
-}
-/*}}}*/
-
 // MODULE *********************************************************************
 
-/*{{{  OLDCODE (procfile_init)*/
-// int procfile_init( void )
-// {
-//      /* create the /proc file */
-//      procfs_file = create_proc_entry(PROCFS_NAME, 0, NULL);
-//      
-//      if (procfs_file == NULL) {
-//              remove_proc_entry(PROCFS_NAME, NULL);
-//              printk(KERN_ALERT "Error: Could not initialize /proc/%s\n",
-//                      PROCFS_NAME);
-//              return -ENOMEM;
-//      }
-// 
-//      procfs_file->read_proc  = procfile_read;
-//      procfs_file->write_proc = procfile_write;
-//      procfs_file->mode         = S_IFREG | S_IRUGO | S_IWUGO;
-//      procfs_file->uid          = 0;
-//      procfs_file->gid          = 0;
-//      procfs_file->size         = PROCFS_MAX_SIZE;
-// 
-//      printk(KERN_INFO "/proc/%s created\n", PROCFS_NAME);    
-//      return 0;       /* everything is ok */
-// }
-/*}}}*/
-/*{{{  OLDCODE (procfile_exit)*/
-// void procfile_exit( void )
-// {
-//      remove_proc_entry(PROCFS_NAME, NULL);
-//      printk(KERN_INFO "/proc/%s removed\n", PROCFS_NAME);
-// }
-// 
-// 
 
-// #ifndef PCASM
-// module_param (HwId, charp, 0);
-// #endif
-/*}}}*/
-
-/*{{{  static int ModuleInit (void)*/
+/*{{{  static int ev3dev_pwm_doinit (void)*/
 /*
  *	initialises the PWM module for driving motors on the EV3.
+ *	return 0 on success, non-zero on failure.
  */
-static int ModuleInit (void)
+static int ev3dev_pwm_doinit (void)
 {
-// 1  Hw  =  HWID;
-// 1
-// 1  if (Hw < PLATFORM_START)
-// 1  {
-// 1    Hw  =  PLATFORM_START;
-// 1  }
-// 1  if (Hw > PLATFORM_END)
-// 1  {
-// 1    Hw  =  PLATFORM_END;
-// 1  }
+	int ret = 0;
 
-// #ifdef DEBUG
-	printk (KERN_INFO "HW %s init started\n", "ev3dev_pwm");
-// 1  printk(KERN_INFO "Hw is %d\n",Hw);
-// #endif
+#if 0
+	ehrpwm_1_0 = pwm_request_byname (EV3DEV_PWM_EHRPWM1A_NAME, "ev3dev_pwm");
+	if (IS_ERR (ehrpwm_1_0)) {
+		printk (KERN_ERR "ev3dev_pwm: failed to find PWM device %s\n", EV3DEV_PWM_EHRPWM1A_NAME);
+		ret = PTR_ERR (ehrpwm_1_0);
+		goto out_err0;
+	}
 
-//  if (request_mem_region(DA8XX_GPIO_BASE,0xD8,MODULE_NAME) >= 0)
-//  {
-//    GpioBase  =  (void*)ioremap(DA8XX_GPIO_BASE,0xD8);
-//    if (GpioBase != NULL)
-//    {
-//#ifdef DEBUG
-//    printk(KERN_INFO "%s gpio address mapped\n",MODULE_NAME);
-//#endif
-//
-//      switch(Hw)
-//      {
-//        case EP2:
-//        {
-	/* This is to comply with changing of inverters on the tacho direction pins */
-	/* only Final hardware does not need to be inverted                         */
-//    HwInvBits = 0xFFFFFFFF;
+	ehrpwm_1_1 = pwm_request_byname (EV3DEV_PWM_EHRPWM1B_NAME, "ev3dev_pwm");
+	if (IS_ERR (ehrpwm_1_1)) {
+		printk (KERN_ERR "ev3dev_pwm: failed to find PWM device %s\n", EV3DEV_PWM_EHRPWM1B_NAME);
+		ret = PTR_ERR (ehrpwm_1_1);
+		goto out_err1;
+	}
+#endif
 
 	/* Motor PWM outputs has been switched in EP2 MA<->MB and MC<->MD */
 	SetDuty[0] = SetDutyMB;
 	SetDuty[1] = SetDutyMA;
 	SetDuty[2] = SetDutyMD;
 	SetDuty[3] = SetDutyMC;
-//        }
-//        break;
-//        case FINALB:
-//        {
-//          /* This is to comply with changing of inverters on the tacho direction pins */
-//          /* only Final hardware does not need to be inverted                         */
-//          HwInvBits = 0xFFFFFFFF;
-//
-//          /* Motor PWM outputs has been switched in EP2 MA<->MB and MC<->MD */
-//          SetDuty[0]  = SetDutyMA;
-//          SetDuty[1]  = SetDutyMB;
-//          SetDuty[2]  = SetDutyMC;
-//          SetDuty[3]  = SetDutyMD;
-//        }
-//        break;
-//        case FINAL:
-//        {
-//          /* This is to comply with changing of inverters on the tacho direction pins */
-//          /* only Final hardware does not need to be inverted                         */
-//          HwInvBits = 0;
-//
-//          /* Motor PWM outputs has been switched in EP2 MA<->MB and MC<->MD */
-//          SetDuty[0]  = SetDutyMA;
-//          SetDuty[1]  = SetDutyMB;
-//          SetDuty[2]  = SetDutyMC;
-//          SetDuty[3]  = SetDutyMD;
-//        }
-//        break;
-//      }
-//
+
+	ev3mem = ev3dev_get_mmio_regions ();
+	if (!ev3mem) {
+		printk (KERN_ERR "ev3dev_pwm: failed to get mapped I/O regions from ev3dev\n");
+		ret = -EIO;
+		goto out_err2;
+	}
+
 	InitGpio ();
 
-//      procfile_init();
-
 	Device1Init ();
-	Device2Init ();
+
+	/* clear state (used to be in Device2Init) */
+	memset (MotorData, 0, sizeof (MotorData));
 
 	/* Setup timer irq */
 	Device1Time = ktime_set (0, SOFT_TIMER_SETUP);
@@ -4265,15 +3815,26 @@ static int ModuleInit (void)
 	Device1Timer.function = Device1TimerInterrupt1;
 	hrtimer_start (&Device1Timer, Device1Time, HRTIMER_MODE_REL);
 
-	return (0);
+	return ret;
+
+out_err2:
+#if 0
+	pwm_release (ehrpwm_1_1);
+	ehrpwm_1_1 = NULL;
+out_err1:
+	pwm_release (ehrpwm_1_0);
+	ehrpwm_1_0 = NULL;
+out_err0:
+#endif
+	return ret;
 }
 
 /*}}}*/
-/*{{{  static void ModuleExit (void)*/
+/*{{{  static void ev3dev_pwm_doexit (void)*/
 /*
  *	tidies up resources for module exit.
  */
-static void ModuleExit (void)
+static void ev3dev_pwm_doexit (void)
 {
 	printk ("ev3dev_pwm exit started\n");
 	STOPPwm;
@@ -4284,12 +3845,23 @@ static void ModuleExit (void)
 	free_irq (gpio_to_irq (IRQD_PINNO), NULL);
 
 	Device1Exit ();
-	Device2Exit ();
 // 1  procfile_exit();
 
 	FreeGpio ();
 
 //  iounmap(GpioBase);
+#if 0
+	pwm_release (ehrpwm_1_0);
+	pwm_release (ehrpwm_1_1);
+	ehrpwm_1_0 = NULL;
+	ehrpwm_1_1 = NULL;
+#endif
+
+	if (ev3mem) {
+		ev3dev_release_mmio_regions ();
+		ev3mem = NULL;
+	}
+
 
 }
 /*}}}*/
@@ -4596,23 +4168,30 @@ static int ev3dev_pwm_init (void)
 		}
 	}
 
-	ModuleInit ();
+	ret = ev3dev_pwm_doinit ();
+	if (ret) {
+		printk (KERN_ERR "ev3dev_pwm: failed to initialise module specific code\n");
+		goto err8;
+	}
+
 
 	return 0;
+err8:
+	i = 4;
 
 err7:
 	while (--i >= 0) {
 		sysfs_remove_group (&ev3dev_pwm_motor[i]->dev.kobj, ev3dev_pwm_motor_attr_groups[i]);
 	}
 
-	i = 5;			// Make sure we unroll the device adds when we fall through!
+	i = 4;			// Make sure we unroll the device adds when we fall through!
 
 err6:
 	while (--i >= 0) {
 		platform_device_del (ev3dev_pwm_motor[i]);
 	}
 
-	i = 5;			// Make sure we unroll the allocates when we fall through!
+	i = 4;			// Make sure we unroll the allocates when we fall through!
 
 err5:
 	while (--i >= 0) {
@@ -4635,7 +4214,7 @@ static void ev3dev_pwm_exit (void)
 {
 	int i;
 
-	ModuleExit ();
+	ev3dev_pwm_doexit ();
 
 	for (i = 0; i < 4; ++i) {
 		sysfs_remove_group (&ev3dev_pwm_motor[i]->dev.kobj, ev3dev_pwm_motor_attr_groups[i]);
