@@ -1,0 +1,10 @@
+KBUILD_EXTRA_SYMBOLS := ../ev3dev-modules/lms2012/d_ev3dev/Linuxmod_AM1808/Module.symvers
+
+obj-m       += ev3dev_$(MOD).o
+
+ccflags-y   := -I../ev3dev-modules/lms2012/util
+ccflags-y   += -I../ev3dev-modules/lms2012/lms2012/source
+
+ev3dev_$(MOD)-y := d_$(MOD).o
+ev3dev_$(MOD)-y += ../../util/ev3dev_util.o 
+

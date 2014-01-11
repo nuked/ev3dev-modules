@@ -89,12 +89,12 @@ EXPORT_SYMBOL_GPL(ev3dev);
 /*}}}*/
 /*{{{  ev3dev_regioninfo[IO_COUNT] (struct __ev3dev_regioninfo), ev3dev_ioregions (void **), ev3dev_mmiocount (int)*/
 static struct __ev3dev_regioninfo ev3dev_regioninfo[EV3IO_COUNT] = {
-	{"SYSCFG0",	32,	0x01C14000,	0x190},
-	{"EHRPWM1",	16,	0x01F02000,	0x2854},
-	{"ECAP0",	16,	0x01F06000,	0x60},
-	{"ECAP1",	16,	0x01F07000,	0x60},
-	{"TIMER64P3",	32,	0x01F0D000,	0x80},
-	{"PSC1",	32,	0x01E27000,	0xA80}
+	{"ev3dev:SYSCFG0",	32,	0x01C14000,	0x190},
+	{"ev3dev:EHRPWM1",	16,	0x01F02000,	0x2854},
+	{"ev3dev:ECAP0",	16,	0x01F06000,	0x60},
+	{"ev3dev:ECAP1",	16,	0x01F07000,	0x60},
+	{"ev3dev:TIMER64P3",	32,	0x01F0D000,	0x80},
+	{"ev3dev:PSC1",		32,	0x01E27000,	0xA80}
 };
 
 static void *ev3dev_ioregions[EV3IO_COUNT];
@@ -115,7 +115,7 @@ static int ev3dev_init_regions (void)
 	ev3dev_mmiocount = 0;
 
 	for (i=0; i<EV3IO_COUNT; i++) {
-		void *p = request_mem_region (ev3dev_regioninfo[i].base, ev3dev_regioninfo[i].size, "ev3dev");
+		void *p = request_mem_region (ev3dev_regioninfo[i].base, ev3dev_regioninfo[i].size, ev3dev_regioninfo[i].name);
 		if (!p) {
 			printk (KERN_ERR "ev3dev: failed to request memory for region '%s', error %d\n", ev3dev_regioninfo[i].name, ret);
 			ret = -EIO;
