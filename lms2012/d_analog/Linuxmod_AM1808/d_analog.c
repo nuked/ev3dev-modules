@@ -29,6 +29,7 @@
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/hrtimer.h>
+#include <linux/spi/spi.h>
 
 #include <asm/gpio.h>
 #include <mach/mux.h>
@@ -48,6 +49,8 @@
 extern struct platform_device *ev3dev;
 
 static struct platform_device *analog = NULL;
+
+static void **ev3mem = NULL;
 
 /*}}}*/
 
@@ -554,6 +557,12 @@ static const short legoev3_oport_pins[] = {
 	EV3_GPIO2_8,
 	(-1)
 };
+
+static const short legoev3_adcpower_pins[] = {
+	EV3_GPIO6_14,
+	EV3_GPIO0_6,
+	(-1)
+};
 /*}}}*/
 
 /*{{{  OLDCODE*/
@@ -891,7 +900,11 @@ static int analog_init_gpio (void)
 		printk (KERN_WARNING MODULE_NAME ": failed to configure DaVinci output port pins, error %d", ret);
 		goto out_err0;
 	}
-	/* FIXME: ADC pins for power */
+	ret = davinci_cfg_reg_list (legoev3_adcpower_pins);
+	if (ret) {
+		printk (KERN_WARNING MODULE_NAME ": failed to configure DaVinci ADC power pins, error %d", ret);
+		goto out_err0;
+	}
 
 	/*{{{  configure inputs*/
 	for (i=0; i<NO_OF_INPUT_PORTS; i++) {
@@ -927,6 +940,21 @@ static int analog_init_gpio (void)
 			}
 		}
 	}
+
+	/*}}}*/
+	/*{{{  configure ADC power pins*/
+	for (i=0; i<ADC_POWER_PINS; i++) {
+		if (legoev3_adcpower_gpio[i] >= 0) {
+			ret = gpio_request (legoev3_adcpower_gpio[i], "ev3dev_analog");
+			if (ret) {
+				printk (KERN_WARNING MODULE_NAME ": failed to claim gpio pin 0x%x, error %d\n",
+						legoev3_adcpower_gpio[i], ret);
+				goto out_err0;
+			}
+			gpio_direction_input (legoev3_adcpower_gpio[i]);
+		}
+	}
+
 
 	/*}}}*/
 
@@ -1037,19 +1065,37 @@ static void analog_free_gpio (void)
 			gpio_free (legoev3_oport_gpio[i][pin]);
 		}
 	}
+	for (i=0; i<ADC_POWER_PINS; i++) {
+		gpio_free (legoev3_adcpower_gpio[i]);
+	}
 	return;
 }
 /*}}}*/
 
 /*{{{  macros*/
+
+#define PINFloat(port,pin)		do { gpio_direction_input (legoev3_iport_gpio[port][pin]); } while (0)
+#define PINRead(port,pin)		gpio_get_value (legoev3_iport_gpio[port][pin])
+#define PINHigh(port,pin)		do { gpio_direction_output (legoev3_iport_gpio[port][pin], 1); } while (0)
+#define PINLow(port,pin)		do { gpio_direction_output (legoev3_iport_gpio[port][pin], 0); } while (0)
+
+#define POUTFloat(port,pin)		do { gpio_direction_input (legoev3_oport_gpio[port][pin]); } while (0)
+#define POUTRead(port,pin)		gpio_get_value (legoev3_oport_gpio[port][pin])
+#define POUTHigh(port,pin)		do { gpio_direction_output (legoev3_oport_gpio[port][pin], 1); } while (0)
+#define POUTLow(port,pin)		do { gpio_direction_output (legoev3_oport_gpio[port][pin], 0); } while (0)
+
+#define IGENOn				do { gpio_direction_output (legoev3_adcpower_gpio[ADCONIGEN], 1); } while (0)
+#define IGENOff				do { gpio_direction_output (legoev3_adcpower_gpio[ADCONIGEN], 0); } while (0)
+#define BATENOn				do { gpio_direction_output (legoev3_adcpower_gpio[ADCBATEN], 1); } while (0)
+#define BATENOff			do { gpio_direction_output (legoev3_adcpower_gpio[ADCBATEN], 0); } while (0)
+
+/*{{{  OLDCODE*/
+#if 0
 #define   PINFloat(port,pin)            {\
                                           (*InputPortPin[port][pin].pGpio).dir |=  InputPortPin[port][pin].Mask;\
                                         }
 
-
 #define   PINRead(port,pin)             ((*InputPortPin[port][pin].pGpio).in_data & InputPortPin[port][pin].Mask)
-
-
 #define   PINHigh(port,pin)             {\
                                           (*InputPortPin[port][pin].pGpio).set_data  =  InputPortPin[port][pin].Mask;\
                                           (*InputPortPin[port][pin].pGpio).dir      &= ~InputPortPin[port][pin].Mask;\
@@ -1059,7 +1105,6 @@ static void analog_free_gpio (void)
                                           (*InputPortPin[port][pin].pGpio).clr_data  =  InputPortPin[port][pin].Mask;\
                                           (*InputPortPin[port][pin].pGpio).dir      &= ~InputPortPin[port][pin].Mask;\
                                         }
-
 
 #define   POUTFloat(port,pin)           {\
                                           (*OutputPortPin[port][pin].pGpio).dir |=  OutputPortPin[port][pin].Mask;\
@@ -1102,6 +1147,10 @@ static void analog_free_gpio (void)
                                           (*AdcPowerPin[ADCBATEN].pGpio).dir      &= ~AdcPowerPin[ADCBATEN].Mask;\
                                         }
 
+
+#endif
+/*}}}*/
+
 /*}}}*/
 
 #ifdef DISABLE_OLD_COLOR
@@ -1127,6 +1176,10 @@ static UBYTE CtoH (UBYTE Char) /*{{{*/
 #endif
 
 // SW SPI *********************************************************************
+
+/*
+ * XXX: this needs fixing to use the spi_davinci driver that already exists.
+ */
 
 #ifndef ADC_BITBANGING
 
@@ -1164,54 +1217,77 @@ static UBYTE CtoH (UBYTE Char) /*{{{*/
 
 /*}}}*/
 /*{{{  SPI state and macros*/
-static volatile unsigned long *Spi0;
+// static volatile unsigned long *Spi0;
 
-#define   SPIRxempty                    (Spi0[SPIBUF] & 0x80000000)
-#define   SPITxfull                     (Spi0[SPIBUF] & 0x20000000)
+#define SPIRxempty	(EV3IO_READ32(ev3mem[EV3IO_SPI], SPIBUF) & 0x80000000)
+#define SPITxfull	(EV3IO_READ32(ev3mem[EV3IO_SPI], SPIBUF) & 0x20000000)
 
-#define   SPIInit                       {\
-                                          Spi0[SPIGCR1]     = 0x00000003; /* Master enable                */\
-                                          Spi0[SPIPC0]      = 0x00000E08; /*                              */\
-                                          Spi0[SPIDAT1]     = 0x0;        /* Format 0 is selected         */\
-                                          Spi0[SPIFMT0]     = 0x00010010 | ((CNVSPD << 8) & 0xFF00);\
-                                          Spi0[SPIDELAY]    = 0x0A0A0A0A; /* Delays = 10                  */\
-                                          Spi0[SPIINT0]     = 0x0;        /* Interrupts disabled          */\
-                                          Spi0[SPIDEF]      = 0x00000008;\
-                                          Spi0[SPIGCR1]     = 0x01000003; /* Enable bit                   */\
-                                        }
+#define SPIInit		do {\
+				EV3IO_WRITE32(0x00000003, ev3mem[EV3IO_SPI], SPIGCR1);		/* master enable */ \
+				EV3IO_WRITE32(0x00000E08, ev3mem[EV3IO_SPI], SPIPC0);		/*  */ \
+				EV3IO_WRITE32(0x0, ev3mem[EV3IO_SPI], SPIDAT1);			/* format 0 is selected */ \
+				EV3IO_WRITE32(0x00010010 | ((CNVSPD << 8) & 0xFF00), ev3mem[EV3IO_SPI], SPIFMT0);	/*  */ \
+				EV3IO_WRITE32(0x0A0A0A0A, ev3mem[EV3IO_SPI], SPIDELAY);		/* delays = 10 */ \
+				EV3IO_WRITE32(0x0, ev3mem[EV3IO_SPI], SPIINT0);			/* interrupts disabled */ \
+				EV3IO_WRITE32(0x00000008, ev3mem[EV3IO_SPI], SPIDEF);		/*  */ \
+				EV3IO_WRITE32(0x01000003, ev3mem[EV3IO_SPI], SPIGCR1);		/* enable bit */ \
+			} while (0)
 
-#define   SPIExit                       {\
-                                          Spi0[SPIGCR1]     = 0x00000103; /* Master enable                */\
-                                          Spi0[SPIPC0]      = 0x01010E01; /*                              */\
-                                          Spi0[SPIDAT1]     = 0x003F0000;        /* Format 0 is selected         */\
-                                          Spi0[SPIFMT0]     = 0x00010408 | ((CNVSPD << 8) & 0xFF00);\
-                                          Spi0[SPIDELAY]    = 0x00000000; /* Delays = 10                  */\
-                                          Spi0[SPIINT0]     = 0x00000000;        /* Interrupts disabled          */\
-                                          Spi0[SPIDEF]      = 0x0000003F;\
-                                        }
+#define SPIExit		do {\
+				EV3IO_WRITE32(0x00000103, ev3mem[EV3IO_SPI], SPIGCR1);		/* master enable */ \
+				EV3IO_WRITE32(0x01010E01, ev3mem[EV3IO_SPI], SPIPC0);		/*  */ \
+				EV3IO_WRITE32(0x003F0000, ev3mem[EV3IO_SPI], SPIDAT1);		/* format 0 is selected */ \
+				EV3IO_WRITE32(0x00010408 | ((CNVSPD << 8) & 0xFF00), ev3mem[EV3IO_SPI], SPIFMT0);	/*  */ \
+				EV3IO_WRITE32(0x0, ev3mem[EV3IO_SPI], SPIDELAY);		/* delays = 0 */ \
+				EV3IO_WRITE32(0x0, ev3mem[EV3IO_SPI], SPIINT0);			/* interrupts disabled */ \
+				EV3IO_WRITE32(0x0000003F, ev3mem[EV3IO_SPI], SPIDEF);		/*  */ \
+			} while (0)
+
+static int saved_spi_regs[8] = {SPIGCR0, SPIGCR1, SPIPC0, SPIDAT1, SPIFMT0, SPIDELAY, SPIINT0, SPIDEF};
+static ULONG saved_spi_state[8];
 
 
-
-ULONG SpiSave0;
-ULONG SpiSave1;
-ULONG SpiSave2;
-ULONG SpiSave3;
-ULONG SpiSave4;
-ULONG SpiSave5;
-ULONG SpiSave6;
-ULONG SpiSave7;
 /*}}}*/
 
+/*{{{  static void spi_save_regs (void)*/
+/*
+ *	saves SPI register state in 'saved_spi_state'.
+ */
+static void spi_save_regs (void)
+{
+	int i;
+
+	for (i=0; i<8; i++) {
+		saved_spi_state[i] = EV3IO_READ32 (ev3mem[EV3IO_SPI], saved_spi_regs[i]);
+	}
+}
+/*}}}*/
+/*{{{  static void spi_restore_regs (void)*/
+/*
+ *	restores SPI register state from 'saved_spi_state'.
+ */
+static void spi_restore_regs (void)
+{
+	int i;
+
+	for (i=0; i<8; i++) {
+		EV3IO_WRITE32 (saved_spi_state[i], ev3mem[EV3IO_SPI], saved_spi_regs[i]);
+	}
+}
+/*}}}*/
+
+/*{{{  OLDCODE (SpiSaveReg, SpiRestoreReg)*/
+#if 0
 void SpiSaveReg (void) /*{{{*/
 {
-	SpiSave0 = Spi0[SPIGCR0];
-	SpiSave1 = Spi0[SPIGCR1];
-	SpiSave2 = Spi0[SPIPC0];
-	SpiSave3 = Spi0[SPIDAT1];
-	SpiSave4 = Spi0[SPIFMT0];
-	SpiSave5 = Spi0[SPIDELAY];
-	SpiSave6 = Spi0[SPIINT0];
-	SpiSave7 = Spi0[SPIDEF];
+	SpiSave0 = EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIGCR0);
+	SpiSave1 = EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIGCR1);
+	SpiSave2 = EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIPC0);
+	SpiSave3 = EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDAT1);
+	SpiSave4 = EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIFMT0);
+	SpiSave5 = EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDELAY);
+	SpiSave6 = EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIINT0);
+	SpiSave7 = EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDEF);
 }
 
 /*}}}*/
@@ -1228,48 +1304,74 @@ void SpiRestoreReg (void) /*{{{*/
 }
 
 /*}}}*/
-void SpiInit (void) /*{{{*/
+#endif
+/*}}}*/
+
+/*{{{  static int analog_spi_init (void)*/
+/*
+ *	initialises SPI handling (memory-mapped I/O).
+ *	returns 0 on success, < 0 on failure.
+ */
+static int analog_spi_init (void)
 {
-	if (request_mem_region (0x01C41000, 0x68, MODULE_NAME) >= 0) {
-		Spi0 = (unsigned long *) ioremap (0x01C41000, 0x68);
-		if (Spi0 != NULL) {
-#ifdef DEBUG
-			printk ("  %s memory mapped from 0x%08lX\n", DEVICE1_NAME, (unsigned long) Spi0);
+	/* memory region now comes from ev3dev as ev3mem[EV3IO_SPI] */
+#if 0
+	printk (KERN_DEBUG MODULE_NAME ": SPIGCR0   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIGCR0));
+	printk (KERN_DEBUG MODULE_NAME ": SPIGCR1   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIGCR1));
+	printk (KERN_DEBUG MODULE_NAME ": SPIPC0    = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIPC0));
+	printk (KERN_DEBUG MODULE_NAME ": SPIDAT1   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDAT1));
+	printk (KERN_DEBUG MODULE_NAME ": SPIFMT0   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIFMT0));
+	printk (KERN_DEBUG MODULE_NAME ": SPIDELAY  = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDELAY));
+	printk (KERN_DEBUG MODULE_NAME ": SPIINT0   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIINT0));
+	printk (KERN_DEBUG MODULE_NAME ": SPIDEF    = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDEF));
 #endif
-		}
-#ifdef DEBUG
-		printk ("SPIGCR0     = 0x%08lX\n", Spi0[SPIGCR0]);
-		printk ("SPIGCR1     = 0x%08lX\n", Spi0[SPIGCR1]);
-		printk ("SPIPC0      = 0x%08lX\n", Spi0[SPIPC0]);
-		printk ("SPIDAT1     = 0x%08lX\n", Spi0[SPIDAT1]);
-		printk ("SPIFMT0     = 0x%08lX\n", Spi0[SPIFMT0]);
-		printk ("SPIDELAY    = 0x%08lX\n", Spi0[SPIDELAY]);
-		printk ("SPIINT0     = 0x%08lX\n", Spi0[SPIINT0]);
-		printk ("SPIDEF      = 0x%08lX\n", Spi0[SPIDEF]);
-#endif
-		SpiSaveReg ();
-		SPIInit;
-	}
+	spi_save_regs ();
+
+	SPIInit;
+
+	return 0;
 }
 
 /*}}}*/
-void SpiExit (void) /*{{{*/
+/*{{{  static void analog_spi_exit (void)*/
+/*
+ *	shuts-down SPI handling.
+ */
+static void analog_spi_exit (void)
 {
-	SpiRestoreReg ();
-#ifdef DEBUG
-	printk ("SPIGCR0     = 0x%08lX\n", Spi0[SPIGCR0]);
-	printk ("SPIGCR1     = 0x%08lX\n", Spi0[SPIGCR1]);
-	printk ("SPIPC0      = 0x%08lX\n", Spi0[SPIPC0]);
-	printk ("SPIDAT1     = 0x%08lX\n", Spi0[SPIDAT1]);
-	printk ("SPIFMT0     = 0x%08lX\n", Spi0[SPIFMT0]);
-	printk ("SPIDELAY    = 0x%08lX\n", Spi0[SPIDELAY]);
-	printk ("SPIINT0     = 0x%08lX\n", Spi0[SPIINT0]);
-	printk ("SPIDEF      = 0x%08lX\n", Spi0[SPIDEF]);
+	spi_restore_regs ();
+
+#if 0
+	printk (KERN_DEBUG MODULE_NAME ": SPIGCR0   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIGCR0));
+	printk (KERN_DEBUG MODULE_NAME ": SPIGCR1   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIGCR1));
+	printk (KERN_DEBUG MODULE_NAME ": SPIPC0    = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIPC0));
+	printk (KERN_DEBUG MODULE_NAME ": SPIDAT1   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDAT1));
+	printk (KERN_DEBUG MODULE_NAME ": SPIFMT0   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIFMT0));
+	printk (KERN_DEBUG MODULE_NAME ": SPIDELAY  = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDELAY));
+	printk (KERN_DEBUG MODULE_NAME ": SPIINT0   = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIINT0));
+	printk (KERN_DEBUG MODULE_NAME ": SPIDEF    = 0x%8.8lx\n", EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIDEF));
 #endif
-	iounmap (Spi0);
+	return;
 }
 
 /*}}}*/
+/*{{{  static UWORD analog_spi_update (UWORD data_out)*/
+/*
+ *	emits a value and returns the incoming byte from the SPI bus.
+ */
+static UWORD analog_spi_update (UWORD data_out)
+{
+	while (SPITxfull);
+
+	EV3IO_WRITE32 ((ULONG)data_out, ev3mem[EV3IO_SPI], SPIDAT0);
+
+	while (SPIRxempty);
+
+	return (UWORD)(EV3IO_READ32 (ev3mem[EV3IO_SPI], SPIBUF) & 0xffff);
+}
+/*}}}*/
+
+#if 0
 UWORD SpiUpdate (UWORD DataOut) /*{{{*/
 {
 #ifndef DISABLE_ADC
@@ -1286,6 +1388,7 @@ UWORD SpiUpdate (UWORD DataOut) /*{{{*/
 }
 
 /*}}}*/
+#endif
 
 #else
 
@@ -1593,7 +1696,7 @@ static enum hrtimer_restart Device1TimerInterrupt1 (struct hrtimer *pTimer) /*{{
 				}
 			}
 
-			*pData = (UWORD) SpiUpdate ((0x1840 | ((Input & 0x000F) << 7)));
+			*pData = (UWORD) analog_spi_update ((0x1840 | ((Input & 0x000F) << 7)));
 			*pData &= 0x0FFF;
 
 			NxtPointer++;
@@ -1635,7 +1738,7 @@ static enum hrtimer_restart Device1TimerInterrupt1 (struct hrtimer *pTimer) /*{{
 				}
 			}
 
-			*pData = (UWORD) SpiUpdate ((0x1840 | ((Input & 0x000F) << 7))) & 0xFFF;
+			*pData = (UWORD) analog_spi_update ((0x1840 | ((Input & 0x000F) << 7))) & 0xFFF;
 			if (NxtcolorLatchedCmd[InputPoint2] == 0x0D) {
 				if (ClockHigh2[NxtPointer]) {
 					if (Nxtcolor[InputPoint2]) {
@@ -1731,7 +1834,7 @@ static enum hrtimer_restart Device1TimerInterrupt1 (struct hrtimer *pTimer) /*{{
 		InputMid = InputNext;
 		InputNext = InputScheme1[InputPoint1];
 
-		pInputs[InputLast] = (UWORD) SpiUpdate ((0x1850 | (InputReadMap[InputNext] << 7))) & 0xFFF;
+		pInputs[InputLast] = (UWORD) analog_spi_update ((0x1850 | (InputReadMap[InputNext] << 7))) & 0xFFF;
 		InputPoint1++;
 
 /*{{{  OLDCODE*/
@@ -1990,7 +2093,7 @@ static ssize_t Device1Read (struct file *File, char *Buffer, size_t Count, loff_
 // #define     NPAGES        ((SHM_LENGTH + PAGE_SIZE - 1) / PAGE_SIZE)
 // static void *kmalloc_ptr;
 
-
+#if 0
 static int Device1Mmap (struct file *filp, struct vm_area_struct *vma) /*{{{*/
 {
 	int ret;
@@ -2003,24 +2106,114 @@ static int Device1Mmap (struct file *filp, struct vm_area_struct *vma) /*{{{*/
 
 	return (ret);
 }
+#endif
 
 /*}}}*/
 static const struct file_operations Device1Entries = { /*{{{*/
 	.owner = THIS_MODULE,
 	.read = Device1Read,
 	.write = Device1Write,
-	.mmap = Device1Mmap,
+//	.mmap = Device1Mmap,
 };
 
 /*}}}*/
 static struct miscdevice Device1 = { /*{{{*/
-	MISC_DYNAMIC_MINOR,
-	DEVICE1_NAME,
-	&Device1Entries
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = DEVICE1_NAME,
+	.fops = &Device1Entries,
+	.mode = 0666,
 };
 
 /*}}}*/
 
+/*{{{  static int device_analog_init (void)*/
+/*
+ *	initialises device 1 (the analog interface).
+ *	returns 0 on success, < 0 on failure.
+ */
+static int device_analog_init (void)
+{
+	int ret = 0;
+	int i;
+
+	ret = misc_register (&Device1);
+	if (ret) {
+		printk (KERN_WARNING MODULE_NAME ": failed to register misc device, error %d", ret);
+		goto out_err0;
+	}
+
+	ret = analog_spi_init ();
+	if (ret) {
+		printk (KERN_WARNING MODULE_NAME ": failed to initialise SPI, error %d", ret);
+		goto out_err1;
+	}
+
+	analog_spi_update (0x400F);
+	analog_spi_update (0x400F);
+	analog_spi_update (0x400F);
+	analog_spi_update (0x400F);
+	analog_spi_update (0x400F);
+	analog_spi_update (0x400F);
+
+
+	memset (pAnalog, 0, sizeof (ANALOG));
+	for (i=0; i<INPUTS; i++) {
+		(*pAnalog).InDcm[i] = 0;
+		(*pAnalog).InConn[i] = 0;
+	}
+	for (i=0; i<OUTPUTS; i++) {
+		(*pAnalog).OutDcm[i] = 0;
+		(*pAnalog).OutConn[i] = 0;
+	}
+
+	// setup analog update timer interrupt
+
+	Time1[0] = ktime_set (0, 200000);
+	Time1[1] = ktime_set (0, 600000);
+	Time2[0] = ktime_set (0, 200000);
+	Time2[1] = ktime_set (0, 400000);
+
+	NextTime = Time1[0];
+
+	Device1Time = ktime_set (0, DEVICE_UPDATE_TIME);
+	hrtimer_init (&Device1Timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	Device1Timer.function = Device1TimerInterrupt1;
+	hrtimer_start (&Device1Timer, Device1Time, HRTIMER_MODE_REL);
+
+#if 1
+	printk (KERN_INFO MODULE_NAME ": registered device 1 (" DEVICE1_NAME ")\n");
+#endif
+	return 0;
+
+out_err1:
+	misc_deregister (&Device1);
+out_err0:
+	return ret;
+}
+/*}}}*/
+/*{{{  static void device_analog_exit (void)*/
+/*
+ *	shuts-down device 1 (analog interface).
+ */
+static void device_analog_exit (void)
+{
+	int i;
+
+	hrtimer_cancel (&Device1Timer);
+
+	analog_spi_exit ();
+
+	misc_deregister (&Device1);
+
+#if 1
+	printk (KERN_INFO MODULE_NAME ": unregistered device 1 (" DEVICE1_NAME ")\n");
+#endif
+	return;
+}
+/*}}}*/
+
+/*{{{  OLDCODE (Device1Init, Device1Exit)*/
+#if 0
 static int Device1Init (void) /*{{{*/
 {
 	int Result = -1;
@@ -2115,6 +2308,11 @@ static void Device1Exit (void) /*{{{*/
 }
 
 /*}}}*/
+#endif
+/*}}}*/
+
+/* XXX: everything down to "MODULE" is disabled for now.. */
+#if 0
 
 // DEVICE2 ********************************************************************
 
@@ -2604,7 +2802,6 @@ void NxtColorCommStop (UBYTE Port) /*{{{*/
 /*}}}*/
 
 #endif
-
 
 static enum hrtimer_restart Device3TimerInterrupt1 (struct hrtimer *pTimer) /*{{{*/
 {
@@ -3393,6 +3590,9 @@ static void Device3Exit (void) /*{{{*/
 
 /*}}}*/
 
+#endif
+
+
 
 // MODULE *********************************************************************
 
@@ -3411,29 +3611,39 @@ static int analog_module_init (void)
 		goto out_err0;
 	}
 
+	ev3mem = ev3dev_get_mmio_regions ();
+	if (!ev3mem) {
+		printk (KERN_ERR MODULE_NAME ": failed to get mapped I/O regions from ev3dev\n");
+		ret = -EIO;
+		goto out_err1;
+	}
+
 	/* enable battery meter */
 	BATENOn;
 
-	ret = Device1Init ();
-	if (ret) {
-		goto out_err1;
-	}
-	ret = Device2Init ();
+	ret = device_analog_init ();
 	if (ret) {
 		goto out_err2;
 	}
-	ret = Device3Init ();
-	if (ret) {
-		goto out_err3;
-	}
+// 	ret = Device2Init ();
+// 	if (ret) {
+// 		goto out_err3;
+// 	}
+// 	ret = Device3Init ();
+// 	if (ret) {
+// 		goto out_err4;
+// 	}
 
 	return 0;
 
 	/* error-handlers: undo things in (mostly) reverse order */
-out_err3:
-	Device2Exit ();
+// out_err4:
+// 	Device2Exit ();
+// out_err3:
+// 	device_analog_exit ();
 out_err2:
-	Device1Exit ();
+	ev3dev_release_mmio_regions ();
+	ev3mem = NULL;
 out_err1:
 	analog_free_gpio ();
 
@@ -3482,9 +3692,12 @@ static void analog_module_exit (void)
 //! \todo fix FHOLD
 	POUTHigh (2, OUTPUT_PORT_PIN5W);
 
-	Device3Exit ();
-	Device2Exit ();
-	Device1Exit ();
+	//Device3Exit ();
+	//Device2Exit ();
+	device_analog_exit ();
+
+	ev3dev_release_mmio_regions ();
+	ev3mem = NULL;
 
 	analog_free_gpio ();
 	// iounmap (GpioBase);

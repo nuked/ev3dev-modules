@@ -90,11 +90,12 @@ EXPORT_SYMBOL_GPL(ev3dev);
 /*{{{  ev3dev_regioninfo[IO_COUNT] (struct __ev3dev_regioninfo), ev3dev_ioregions (void **), ev3dev_mmiocount (int)*/
 static struct __ev3dev_regioninfo ev3dev_regioninfo[EV3IO_COUNT] = {
 	{"ev3dev:SYSCFG0",	32,	0x01C14000,	0x190},
+//	{"ev3dev:SPI",		32,	0x01C41000,	0x68},
+	{"ev3dev:PSC1",		32,	0x01E27000,	0xA80},
 	{"ev3dev:EHRPWM1",	16,	0x01F02000,	0x2854},
 	{"ev3dev:ECAP0",	16,	0x01F06000,	0x60},
 	{"ev3dev:ECAP1",	16,	0x01F07000,	0x60},
-	{"ev3dev:TIMER64P3",	32,	0x01F0D000,	0x80},
-	{"ev3dev:PSC1",		32,	0x01E27000,	0xA80}
+	{"ev3dev:TIMER64P3",	32,	0x01F0D000,	0x80}
 };
 
 static void *ev3dev_ioregions[EV3IO_COUNT];
